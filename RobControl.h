@@ -59,6 +59,7 @@
 #define ERR_PP_CIRCLE_MIDDLEPOINT 1152
 #define ERR_PP_CIRCLE_LENGTH 1151
 #define ERR_PP_CIRCLEPOINTS 1150
+#define ERR_IP_IF 1119
 #define ERR_IP_IO_INDEX 1118
 #define ERR_IP_TANG 1117
 #define ERR_IP_SUBLEVEL 1116
@@ -104,6 +105,7 @@
 #define ERR_CYCLETIME 1005
 #define MAX_POINT 200
 #define MAX_IO 100
+#define MAX_RPAR 100
 #define MAX_MFUNC 100
 #define MAX_BLOCK_SIZE 100
 #define MAX_LOOP_COUNT 100
@@ -230,8 +232,8 @@ typedef struct Mech_Type
 	struct UserTrf_Type UserTrf;
 } Mech_Type;
 
-typedef struct Frame_Type {
-	double Axes[6];
+typedef struct Frame_Type
+{	double Axes[6];
 } Frame_Type;
 
 typedef struct Calibration_Tool_Type
@@ -326,6 +328,7 @@ typedef struct Robot_Monitor_Type
 	unsigned short Tool;
 	unsigned short Frame;
 	unsigned short M[101];
+	unsigned short R_[101];
 	unsigned short DI_[101];
 	unsigned short DO_[101];
 	unsigned char TrackActive;

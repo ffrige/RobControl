@@ -162,6 +162,7 @@ unsigned short CheckConst()
     check *=  (USER == 10);
     check *=  (MAX_IO == 100);
     check *=  (MAX_MFUNC == 100);
+    check *=  (MAX_RPAR == 100);
     check *=  (MAX_POINT == 200);
     check *=  (MAX_BLOCK_SIZE == 100);
     check *=  (MAX_LOOP_COUNT == 100);
@@ -226,6 +227,7 @@ unsigned short CheckConst()
     check *=  (ERR_IP_SUBLEVEL == 1116);
     check *=  (ERR_IP_TANG == 1117);
     check *=  (ERR_IP_IO_INDEX == 1118);
+    check *=  (ERR_IP_IF == 1119);
     check *=  (ERR_PP_CIRCLEPOINTS == 1150);
     check *=  (ERR_PP_CIRCLE_LENGTH == 1151);
     check *=  (ERR_PP_CIRCLE_MIDDLEPOINT == 1152);

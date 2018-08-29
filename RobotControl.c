@@ -51,8 +51,9 @@ unsigned short RobotControl(unsigned long Robots, unsigned char RobotsNumber)
         
         gRobot[i] = (Robot_Type*) (Robots + sizeof(Robot_Type)*i);
         
-        /* prevent user from changing old monitor values (except for M-functions, DI_ and TrackSynch) */
+        /* prevent user from changing old monitor values (except for M-functions, R, DI_ and TrackSynch) */
         memcpy(&OldMonitor[i].M,&gRobot[i]->Monitor.M,sizeof(OldMonitor[i].M));
+        memcpy(&OldMonitor[i].R_,&gRobot[i]->Monitor.R_,sizeof(OldMonitor[i].R_));
         memcpy(&OldMonitor[i].DI_,&gRobot[i]->Monitor.DI_,sizeof(OldMonitor[i].DI_));
         OldMonitor[i].TrackSynch = gRobot[i]->Monitor.TrackSynch;
         if (gRobot[i]->Monitor.State == STANDSTILL_STATE) OldMonitor[i].Tool = gRobot[i]->Monitor.Tool;
@@ -65,9 +66,6 @@ unsigned short RobotControl(unsigned long Robots, unsigned char RobotsNumber)
             gRobot[i]->Monitor.ErrorLine = 0;
         }
 		
-        /* increase evaluation time -> the more robots the faster it runs off! */
-        EvaluationTime += ((unsigned long) (gRobot[i]->Parameters.CycleTime * 1000.0));
-
         /* overwrite Tool[0] and Frame[0] so that omitting them in the programmed block is equivalent to working with no tool and no frame */
         memset(&gRobot[i]->Parameters.Tool[0],0,sizeof(gRobot[i]->Parameters.Tool[0]));
         memset(&gRobot[i]->Parameters.Frame[0],0,sizeof(gRobot[i]->Parameters.Frame[0]));
@@ -316,8 +314,10 @@ unsigned short RobotControl(unsigned long Robots, unsigned char RobotsNumber)
 		
         /* JogAxis command */
         if (gRobot[i]->Commands.JogAxis) {
-            if ((gRobot[i]->Monitor.State == STANDSTILL_STATE)&&(fRSVG[i].Status == ERR_DISABLED)) {
-                //check for jog parameters consistency
+            
+			if ((gRobot[i]->Monitor.State == STANDSTILL_STATE)&&(fRSVG[i].Status == ERR_DISABLED)) {
+                
+				//check for jog parameters consistency
                 if (((gRobot[i]->Parameters.Jog.Mode != JOG_JOINTS)&&(gRobot[i]->Parameters.Jog.Mode != JOG_BASE)&&(gRobot[i]->Parameters.Jog.Mode != JOG_TOOL)&&(gRobot[i]->Parameters.Jog.Mode != JOG_AUX))
                     ||((gRobot[i]->Parameters.Jog.Mode == JOG_TOOL)&&(gRobot[i]->Monitor.AxesNum != 6))
                     ||(gRobot[i]->Parameters.Jog.Direction > JOG_AUX)
@@ -325,7 +325,9 @@ unsigned short RobotControl(unsigned long Robots, unsigned char RobotsNumber)
                 ) {					
                     gRobot[i]->Monitor.ActiveError = ERR_JOG_PAR;
                     gRobot[i]->Monitor.ErrorLine = 0;
-                } else {	
+                }
+				
+				else {
                     gRobot[i]->Monitor.State = JOGGING;
                     Jog[i] = gRobot[i]->Parameters.Jog;
                     if (Jog[i].Mode == JOG_JOINTS) {
@@ -341,46 +343,46 @@ unsigned short RobotControl(unsigned long Robots, unsigned char RobotsNumber)
                         fRSVG[i].StartPosition = gRobot[i]->Monitor.JointPosition[Jog[i].AxisIndex];
 						
                         if (Jog[i].Direction == JOG_POSITIVE) {
-													//stop at positive limit if set
-													if (gRobot[i]->Parameters.JointLimits[Jog[i].AxisIndex].PositionPos > gRobot[i]->Parameters.JointLimits[Jog[i].AxisIndex].PositionNeg) {
-														fRSVG[i].TargetPosition = gRobot[i]->Parameters.JointLimits[Jog[i].AxisIndex].PositionPos;
-													}
-													else {
-														fRSVG[i].DynamicLimits.PositionPos = 1e37;
-														fRSVG[i].TargetPosition = 1e30;
-													}
+							//stop at positive limit if set
+							if (gRobot[i]->Parameters.JointLimits[Jog[i].AxisIndex].PositionPos > gRobot[i]->Parameters.JointLimits[Jog[i].AxisIndex].PositionNeg) {
+								fRSVG[i].TargetPosition = gRobot[i]->Parameters.JointLimits[Jog[i].AxisIndex].PositionPos;
+							}
+							else {
+								fRSVG[i].DynamicLimits.PositionPos = 1e37;
+								fRSVG[i].TargetPosition = 1e30;
+							}
                             fRSVG[i].DynamicLimits.PositionNeg = -1e37; //ignore negative limit when jogging in positive direction
                         }
-												else if (Jog[i].Direction == JOG_NEGATIVE) {
-													//stop at negative limit if set
-													if (gRobot[i]->Parameters.JointLimits[Jog[i].AxisIndex].PositionPos > gRobot[i]->Parameters.JointLimits[Jog[i].AxisIndex].PositionNeg) {
-														fRSVG[i].TargetPosition = gRobot[i]->Parameters.JointLimits[Jog[i].AxisIndex].PositionNeg;
-													}
-													else {
-														fRSVG[i].DynamicLimits.PositionNeg = -1e37;
-														fRSVG[i].TargetPosition = -1e30;
-													}
-													fRSVG[i].DynamicLimits.PositionPos = 1e37;
-												}
-												else if (Jog[i].Direction == JOG_GOTO) {
-													//check for goto limits - only if set (max>min)
-													if ((Jog[i].GotoPos > gRobot[i]->Parameters.JointLimits[Jog[i].AxisIndex].PositionPos || Jog[i].GotoPos < gRobot[i]->Parameters.JointLimits[Jog[i].AxisIndex].PositionNeg) && (gRobot[i]->Parameters.JointLimits[Jog[i].AxisIndex].PositionPos > gRobot[i]->Parameters.JointLimits[Jog[i].AxisIndex].PositionNeg)) {					
-														gRobot[i]->Monitor.ActiveError = ERR_JOG_GOTOPOS;
-														gRobot[i]->Monitor.ErrorLine = 0;
-													}
-													else if (Jog[i].GotoPos >= gRobot[i]->Monitor.JointPosition[Jog[i].AxisIndex]) {
-														// move in positive direction
-														fRSVG[i].TargetPosition = Jog[i].GotoPos;
-														fRSVG[i].DynamicLimits.PositionPos = 1e37;					
-														fRSVG[i].DynamicLimits.PositionNeg = -1e37;					
-													}
-													else {
-														// move in negative direction
-														fRSVG[i].TargetPosition = Jog[i].GotoPos;
-														fRSVG[i].DynamicLimits.PositionPos = 1e37;					
-														fRSVG[i].DynamicLimits.PositionNeg = -1e37;					
-													}
-												}
+						else if (Jog[i].Direction == JOG_NEGATIVE) {
+							//stop at negative limit if set
+							if (gRobot[i]->Parameters.JointLimits[Jog[i].AxisIndex].PositionPos > gRobot[i]->Parameters.JointLimits[Jog[i].AxisIndex].PositionNeg) {
+								fRSVG[i].TargetPosition = gRobot[i]->Parameters.JointLimits[Jog[i].AxisIndex].PositionNeg;
+							}
+							else {
+								fRSVG[i].DynamicLimits.PositionNeg = -1e37;
+								fRSVG[i].TargetPosition = -1e30;
+							}
+							fRSVG[i].DynamicLimits.PositionPos = 1e37;
+						}
+							else if (Jog[i].Direction == JOG_GOTO) {
+								//check for goto limits - only if set (max>min)
+								if ((Jog[i].GotoPos > gRobot[i]->Parameters.JointLimits[Jog[i].AxisIndex].PositionPos || Jog[i].GotoPos < gRobot[i]->Parameters.JointLimits[Jog[i].AxisIndex].PositionNeg) && (gRobot[i]->Parameters.JointLimits[Jog[i].AxisIndex].PositionPos > gRobot[i]->Parameters.JointLimits[Jog[i].AxisIndex].PositionNeg)) {					
+									gRobot[i]->Monitor.ActiveError = ERR_JOG_GOTOPOS;
+									gRobot[i]->Monitor.ErrorLine = 0;
+								}
+								else if (Jog[i].GotoPos >= gRobot[i]->Monitor.JointPosition[Jog[i].AxisIndex]) {
+									// move in positive direction
+									fRSVG[i].TargetPosition = Jog[i].GotoPos;
+									fRSVG[i].DynamicLimits.PositionPos = 1e37;					
+									fRSVG[i].DynamicLimits.PositionNeg = -1e37;					
+								}
+									else {
+										// move in negative direction
+										fRSVG[i].TargetPosition = Jog[i].GotoPos;
+										fRSVG[i].DynamicLimits.PositionPos = 1e37;					
+										fRSVG[i].DynamicLimits.PositionNeg = -1e37;					
+									}
+							}
                     }// end JOG_JOINTS
 
                     else if (Jog[i].Mode == JOG_BASE) {
@@ -399,16 +401,16 @@ unsigned short RobotControl(unsigned long Robots, unsigned char RobotsNumber)
                         fRSVG[i].DynamicValues.VelocityPos *= fRSVG[i].Override;
                         fRSVG[i].DynamicValues.VelocityNeg *= fRSVG[i].Override;
                         
-                        fRSVG[i].StartPosition = gRobot[i]->Monitor.MountBasePosition[Jog[i].AxisIndex];
+                        fRSVG[i].StartPosition = gRobot[i]->Monitor.ToolBasePosition[Jog[i].AxisIndex];
 
                         // no path limits are set when jogging path axes because limits would depend on current tool and orientation of robot axes
                         // the user needs to manually check its limits
                         // joints are limited anyway through the workspace monitoring
 						
                         if (Jog[i].Direction == JOG_POSITIVE) {
-                            fRSVG[i].TargetPosition = fRSVG[i].DynamicLimits.PositionPos;
+                            fRSVG[i].TargetPosition = fRSVG[i].DynamicLimits.PositionPos; //set to 1e30 by default
                         } else if (Jog[i].Direction == JOG_NEGATIVE) {
-                            fRSVG[i].TargetPosition = fRSVG[i].DynamicLimits.PositionNeg;
+                            fRSVG[i].TargetPosition = fRSVG[i].DynamicLimits.PositionNeg; //set to -1e30 by default
                         } else if (Jog[i].Direction == JOG_GOTO) {
                             fRSVG[i].TargetPosition = Jog[i].GotoPos;
                         }
@@ -437,9 +439,9 @@ unsigned short RobotControl(unsigned long Robots, unsigned char RobotsNumber)
                         // joints are limited anyway through the workspace monitoring
 						
                         if (Jog[i].Direction == JOG_POSITIVE) {
-                            fRSVG[i].TargetPosition = fRSVG[i].DynamicLimits.PositionPos;
+                            fRSVG[i].TargetPosition = fRSVG[i].DynamicLimits.PositionPos; //set to 1e30 by default
                         } else if (Jog[i].Direction == JOG_NEGATIVE) {
-                            fRSVG[i].TargetPosition = fRSVG[i].DynamicLimits.PositionNeg;
+                            fRSVG[i].TargetPosition = fRSVG[i].DynamicLimits.PositionNeg; //set to -1e30 by default
                         } else if (Jog[i].Direction == JOG_GOTO) {
                             fRSVG[i].TargetPosition = Jog[i].GotoPos;
                         }
@@ -721,7 +723,7 @@ unsigned short RobotControl(unsigned long Robots, unsigned char RobotsNumber)
                     gRobot[i]->Monitor.TangOffset = 0;
 				
                     fRSVG[i].Enable = 0;
-                    if (StoppedTime[i] <= gRobot[i]->Parameters.FilterTime) StoppedTime[i] += gRobot[i]->Parameters.CycleTime;
+					if (StoppedTime[i] <= gRobot[i]->Parameters.FilterTime) { StoppedTime[i] += gRobot[i]->Parameters.CycleTime; }
                     strcpy(gRobot[i]->Monitor.CurrentBlock,"");
                     gRobot[i]->Monitor.LineNumber = 0;
                     gRobot[i]->Monitor.TargetPoint = 0;
@@ -785,7 +787,9 @@ unsigned short RobotControl(unsigned long Robots, unsigned char RobotsNumber)
                     } else if (Jog[i].Mode == JOG_BASE) {
                         short WorkspaceFlag = 0;
                         double OldPath[6];
-                        memcpy(&OldPath,&gRobot[i]->Monitor.MountBasePosition,sizeof(OldPath));
+						double OldMount[6];
+						memcpy(OldPath,gRobot[i]->Monitor.ToolBasePosition,sizeof(OldPath)); //include active tool
+						memcpy(OldMount,gRobot[i]->Monitor.MountBasePosition,sizeof(OldMount));
                         memcpy(&OldAxesValues,&gRobot[i]->Monitor.JointPosition,sizeof(OldAxesValues));
                 
                         // OptMot:
@@ -814,9 +818,9 @@ unsigned short RobotControl(unsigned long Robots, unsigned char RobotsNumber)
                                 3. endmatrix R1 = R+ x R0
                                 4. extract target ABC
                                 */
-                                double A_old = gRobot[i]->Monitor.MountBasePosition[3];
-                                double B_old = gRobot[i]->Monitor.MountBasePosition[4];
-                                double C_old = gRobot[i]->Monitor.MountBasePosition[5];
+                                double A_old = gRobot[i]->Monitor.ToolBasePosition[3];
+                                double B_old = gRobot[i]->Monitor.ToolBasePosition[4];
+                                double C_old = gRobot[i]->Monitor.ToolBasePosition[5];
                                 double R_old[3][3];
                                 ComposeMatrix(R_old,A_old,B_old,C_old);
                                 double R_add[3][3];
@@ -831,12 +835,21 @@ unsigned short RobotControl(unsigned long Robots, unsigned char RobotsNumber)
                                 MatMult(R_add,R_old,R_new);
                                 double A_new, B_new, C_new;
                                 DecomposeMatrix(R_new,A_old,B_old,C_old,&A_new,&B_new,&C_new);
-                                gRobot[i]->Monitor.MountBasePosition[3] = A_new;
-                                gRobot[i]->Monitor.MountBasePosition[4] = B_new;
-                                gRobot[i]->Monitor.MountBasePosition[5] = C_new;
+                                gRobot[i]->Monitor.ToolBasePosition[3] = A_new;
+                                gRobot[i]->Monitor.ToolBasePosition[4] = B_new;
+                                gRobot[i]->Monitor.ToolBasePosition[5] = C_new;
                             } else {
-                                gRobot[i]->Monitor.MountBasePosition[Jog[i].AxisIndex] = JogPosition;
+                                gRobot[i]->Monitor.ToolBasePosition[Jog[i].AxisIndex] = JogPosition;
                             }
+
+
+                            //calculate target point in base frame given it in tool frame
+                            if (gRobot[i]->Monitor.AxesNum == 6) {
+                                SubFrameTool3D(gRobot[i]->Monitor.ToolBasePosition,gRobot[i]->Parameters.Frame[gRobot[i]->Monitor.Frame].Axes,gRobot[i]->Parameters.Tool[gRobot[i]->Monitor.Tool].Axes,OldPath[3],OldPath[4],OldPath[5],gRobot[i]->Monitor.MountBasePosition);						
+                            } else {
+                                SubFrameTool2D(gRobot[i]->Monitor.MountBasePosition,gRobot[i]->Parameters.Frame[gRobot[i]->Monitor.Frame].Axes,gRobot[i]->Parameters.Tool[gRobot[i]->Monitor.Tool].Axes,gRobot[i]->Monitor.MountBasePosition);
+                            }
+
                             Trf_Status = Transformations(&gRobot[i]->Parameters.Mechanics,TRF_INVERSE,OldAxesValues,gRobot[i]->Monitor.MountBasePosition,gRobot[i]->Monitor.JointPosition);
                        
                             if (Trf_Status == STATUS_OK) {
@@ -850,7 +863,8 @@ unsigned short RobotControl(unsigned long Robots, unsigned char RobotsNumber)
                             }
                             if ((Trf_Status != STATUS_OK)||(WorkspaceFlag)) {
                                 // ignore movement and reload old position
-                                memcpy(&gRobot[i]->Monitor.MountBasePosition,&OldPath,sizeof(gRobot[i]->Monitor.MountBasePosition));
+								memcpy(&gRobot[i]->Monitor.MountBasePosition,&OldMount,sizeof(gRobot[i]->Monitor.MountBasePosition));
+                                memcpy(&gRobot[i]->Monitor.ToolBasePosition,&OldPath,sizeof(gRobot[i]->Monitor.ToolBasePosition));
                                 memcpy(&gRobot[i]->Monitor.JointPosition,&OldAxesValues,sizeof(gRobot[i]->Monitor.JointPosition));
                                 if (WorkspaceFlag == 0) gRobot[i]->Monitor.ActiveError = Trf_Status;
                                 else gRobot[i]->Monitor.ActiveError = ERR_LIMIT_J1 + WorkspaceFlag-1;
@@ -883,7 +897,8 @@ unsigned short RobotControl(unsigned long Robots, unsigned char RobotsNumber)
                                             
                                     //repeat movement with slower speed
                                     MovementAllowed = 0;
-                                    memcpy(&gRobot[i]->Monitor.MountBasePosition,&OldPath,sizeof(gRobot[i]->Monitor.MountBasePosition));
+									memcpy(&gRobot[i]->Monitor.MountBasePosition,&OldMount,sizeof(gRobot[i]->Monitor.MountBasePosition));
+                                    memcpy(&gRobot[i]->Monitor.ToolBasePosition,&OldPath,sizeof(gRobot[i]->Monitor.ToolBasePosition));
                                     memcpy(&gRobot[i]->Monitor.JointPosition,&OldAxesValues,sizeof(gRobot[i]->Monitor.JointPosition));
                                 }               
                             } else {
@@ -932,7 +947,6 @@ unsigned short RobotControl(unsigned long Robots, unsigned char RobotsNumber)
                                 MovementAllowed = 255; // do not repeat test again
                             }
 
-                
                             //calculate target point in base frame given it in tool frame
                             if (gRobot[i]->Monitor.AxesNum == 6) {
                                 SubFrameTool3D(NewPath,OldPath,gRobot[i]->Parameters.Tool[gRobot[i]->Monitor.Tool].Axes,OldMount[3],OldMount[4],OldMount[5],gRobot[i]->Monitor.MountBasePosition);						
@@ -1026,7 +1040,7 @@ unsigned short RobotControl(unsigned long Robots, unsigned char RobotsNumber)
                     /*** ---- IP ---- ***/
                     /*** interpret next block to keep buffer full ***/
                     unsigned short IP_LoopCount = 0;
-                    //loop until buffer full or end of file or active error (or stop)
+                    //loop until buffer full or end of file, or active error, or stop, or halted by IF evaluation
                     while ((Buffer[i].MotionPackage[Buffer[i].IP_Index].MovementType == MOVE_UNDEF)&&(IP_LoopCount < MAX_LOOP_COUNT)&&(Buffer[i].Eof == 0)&&(StoppingError[i] == 0)) {
                         IP_LoopCount++; //used to avoid long loops in case NC program is full of comments or empty lines; infinite loops caused by GOTO; or long searches for labels
                         if ( ((Robot_Program[i] != 0)&&(LineFromString(Robot_Program[i], line, Buffer[i].IP_PrgCount) == STATUS_OK)) ||		//move_program
@@ -1036,11 +1050,11 @@ unsigned short RobotControl(unsigned long Robots, unsigned char RobotsNumber)
                             Buffer[i].MotionPackage[Buffer[i].IP_Index].FeedrateType = Buffer[i].ModalFeedrateType; //keep modal feedrate (if exists)
                             unsigned short IP_Status = Interpreter(line,&(Buffer[i].MotionPackage[Buffer[i].IP_Index]));
                             
-                            if (IP_Status != STATUS_OK) { //interpreter error -> abort program with error
-                                fRSVG[i].EStop = 1;
-                                StoppingError[i] = IP_Status;
-                                StoppingLine[i] = Buffer[i].IP_PrgCount;
-                            }
+							if (IP_Status != STATUS_OK) { //interpreter error -> abort program with error
+								fRSVG[i].EStop = 1;
+								StoppingError[i] = IP_Status;
+								StoppingLine[i] = Buffer[i].IP_PrgCount;
+							}
                                 
                             else if ((Buffer[i].MotionPackage[Buffer[i].IP_Index].MovementType == MOVE_GOTO)||(Buffer[i].MotionPackage[Buffer[i].IP_Index].MovementType == MOVE_SUB)) { 
                                 //found GOTO/SUB line -> interrupt interpreter and start looking for label
@@ -1135,43 +1149,84 @@ unsigned short RobotControl(unsigned long Robots, unsigned char RobotsNumber)
                                     Buffer[i].MotionPackage[Buffer[i].IP_Index].MovementType = MOVE_UNDEF;	//delete END command from buffer
                                 }
                             }
-                    
-                            else if (Buffer[i].MotionPackage[Buffer[i].IP_Index].MovementType != MOVE_UNDEF)
-                            { //found movement block -> save in buffer
-                                Buffer[i].MotionPackage[Buffer[i].IP_Index].LineNumber = Buffer[i].IP_PrgCount;
-                                strcpy(Buffer[i].MotionPackage[Buffer[i].IP_Index].BlockString,line);
-                                Buffer[i].ModalFeedrate = Buffer[i].MotionPackage[Buffer[i].IP_Index].Feedrate; //save new modal feedrate
-                                Buffer[i].ModalFeedrateType = Buffer[i].MotionPackage[Buffer[i].IP_Index].FeedrateType; //save new modal feedrate type
-                                if (Buffer[i].MotionPackage[Buffer[i].IP_Index].MovementType == MOVE_HOME) {// transform HOME into MJ P0
-                                    Buffer[i].MotionPackage[Buffer[i].IP_Index].MovementType = MOVE_PTP;
-                                    Buffer[i].MotionPackage[Buffer[i].IP_Index].TargetPoint = 0;
-                                } else if (Buffer[i].MotionPackage[Buffer[i].IP_Index].MovementType == MOVE_TOOL) {// transform Tx into MJ Pact Tx
-                                    Buffer[i].MotionPackage[Buffer[i].IP_Index].MovementType = MOVE_PTP;
-                                    //use dirty trick to tell PTP that target position is the same as start position
-                                    Buffer[i].MotionPackage[Buffer[i].IP_Index].DelayTime = POINT_SAME;
-                                } else if (Buffer[i].MotionPackage[Buffer[i].IP_Index].MovementType == MOVE_TRK) { //IP error if tracking index was not programmed correctly!
-                                    if (((Buffer[i].MotionPackage[Buffer[i].IP_Index].TrkIndex == 0)&&(Buffer[i].IP_TrkIndex == 0))||
-                                        ((Buffer[i].MotionPackage[Buffer[i].IP_Index].TrkIndex > 0)&&(Buffer[i].IP_TrkIndex != 0))) {
-                                        fRSVG[i].EStop = 1;
-                                        StoppingError[i] = ERR_IP_TRK_INDEX;
-                                        StoppingLine[i] = Buffer[i].IP_PrgCount;									
-                                    } else {
-                                        Buffer[i].IP_TrkIndex = Buffer[i].MotionPackage[Buffer[i].IP_Index].TrkIndex;
-                                    }
-                                }
-                                Buffer[i].IP_Index++;
-                                if (Buffer[i].IP_Index >= BUFFER_LENGTH) { //circular buffer
-                                    Buffer[i].IP_Index = 0;
-                                }
-                                //move to next line
-                                Buffer[i].IP_PrgCount++;
-                                if ((Robot_Program[i] == 0)&&(Buffer[i].IP_PrgCount >= RING_BUFFER_SIZE)) { //consider ring buffer for move_blocks
-                                    Buffer[i].IP_PrgCount -= RING_BUFFER_SIZE;
-                                }
-                            }
+														        
+							else if (Buffer[i].MotionPackage[Buffer[i].IP_Index].MovementType == MOVE_IF) {
+								if (Robot_Program[i] == 0) { //IF not supported for blocks
+									fRSVG[i].EStop = 1;
+									StoppingError[i] = ERR_IP_IF;
+									StoppingLine[i] = Buffer[i].IP_PrgCount;									
+								}
+								Buffer[i].IF_Level++;
+								Buffer[i].IF_SubLevel = Buffer[i].IF_Level;
+								Buffer[i].Planned = 1;
+								//use Label to look for ELSE/ENDIF
+								Buffer[i].MotionPackage[Buffer[i].IP_Index].Label.Found = 0;
+								Buffer[i].MotionPackage[Buffer[i].IP_Index].Label.Index = Buffer[i].IP_PrgCount;
+								IP_LoopCount=0;
+							}
+        
+							else if (Buffer[i].MotionPackage[Buffer[i].IP_Index].MovementType == MOVE_ELSE) {
+								if (Buffer[i].IF_Level == 0 || Robot_Program[i] == 0) { //ELSE must follow IF, also not supported for blocks
+									fRSVG[i].EStop = 1;
+									StoppingError[i] = ERR_IP_IF;
+									StoppingLine[i] = Buffer[i].IP_PrgCount;									
+								}
+								//use Label to look for ENDIF
+								Buffer[i].IF_SubLevel = Buffer[i].IF_Level;
+								Buffer[i].MotionPackage[Buffer[i].IP_Index].Label.Found = 0;
+								Buffer[i].MotionPackage[Buffer[i].IP_Index].Label.Index = Buffer[i].IP_PrgCount;
+								IP_LoopCount=0;
+							}
+
+							else if (Buffer[i].MotionPackage[Buffer[i].IP_Index].MovementType == MOVE_END_IF) {
+								if (Buffer[i].IF_Level == 0 || Robot_Program[i] == 0) { //ENDIF must follow IF, also not supported for blocks
+									fRSVG[i].EStop = 1;
+                                    StoppingError[i] = ERR_IP_IF;
+                                    StoppingLine[i] = Buffer[i].IP_PrgCount;
+								} else {
+									Buffer[i].MotionPackage[Buffer[i].IP_Index].MovementType = MOVE_UNDEF; //skip line, move on
+									Buffer[i].IF_Level--;
+									Buffer[i].IP_PrgCount++;
+								}
+							}    
+        
+							else if (Buffer[i].MotionPackage[Buffer[i].IP_Index].MovementType != MOVE_UNDEF) 
+							{ //found movement block -> save in buffer
+								Buffer[i].MotionPackage[Buffer[i].IP_Index].LineNumber = Buffer[i].IP_PrgCount;
+								strcpy(Buffer[i].MotionPackage[Buffer[i].IP_Index].BlockString,line);
+								Buffer[i].ModalFeedrate = Buffer[i].MotionPackage[Buffer[i].IP_Index].Feedrate; //save new modal feedrate
+								Buffer[i].ModalFeedrateType = Buffer[i].MotionPackage[Buffer[i].IP_Index].FeedrateType; //save new modal feedrate type
+								if (Buffer[i].MotionPackage[Buffer[i].IP_Index].MovementType == MOVE_HOME) {// transform HOME into MJ P0
+									Buffer[i].MotionPackage[Buffer[i].IP_Index].MovementType = MOVE_PTP;
+									Buffer[i].MotionPackage[Buffer[i].IP_Index].TargetPoint = 0;
+								} else if (Buffer[i].MotionPackage[Buffer[i].IP_Index].MovementType == MOVE_TOOL) {// transform Tx into MJ Pact Tx
+									Buffer[i].MotionPackage[Buffer[i].IP_Index].MovementType = MOVE_PTP;
+									//use dirty trick to tell PTP that target position is the same as start position
+									Buffer[i].MotionPackage[Buffer[i].IP_Index].DelayTime = POINT_SAME;
+								} else if (Buffer[i].MotionPackage[Buffer[i].IP_Index].MovementType == MOVE_TRK) { //IP error if tracking index was not programmed correctly!
+									if (((Buffer[i].MotionPackage[Buffer[i].IP_Index].TrkIndex == 0)&&(Buffer[i].IP_TrkIndex == 0))||
+										((Buffer[i].MotionPackage[Buffer[i].IP_Index].TrkIndex > 0)&&(Buffer[i].IP_TrkIndex != 0))) {
+											fRSVG[i].EStop = 1;
+											StoppingError[i] = ERR_IP_TRK_INDEX;
+											StoppingLine[i] = Buffer[i].IP_PrgCount;									
+									} else {
+										Buffer[i].IP_TrkIndex = Buffer[i].MotionPackage[Buffer[i].IP_Index].TrkIndex;
+									}
+								}
+
+								Buffer[i].IP_Index++;
+								if (Buffer[i].IP_Index >= BUFFER_LENGTH) { //circular buffer
+									Buffer[i].IP_Index = 0;
+								}
+								//move to next line
+								Buffer[i].IP_PrgCount++;
+								if ((Robot_Program[i] == 0)&&(Buffer[i].IP_PrgCount >= RING_BUFFER_SIZE)) { //consider ring buffer for move_blocks
+									Buffer[i].IP_PrgCount -= RING_BUFFER_SIZE;
+								}										
+
+							}
                                 
-                            else
-                            { //useless line (e.g. empty or comment) -> advance to next line (for move_program) or abort (for move_blocks) 
+                            else { //useless line (e.g. empty or comment) -> advance to next line (for move_program) or abort (for move_blocks) 
                                 if (Robot_Program[i] == 0) {
                                     Buffer[i].Eof = 1;
                                     Buffer[i].MotionPackage[Buffer[i].IP_Index].LineNumber = Buffer[i].IP_PrgCount;
@@ -1254,12 +1309,140 @@ unsigned short RobotControl(unsigned long Robots, unsigned char RobotsNumber)
                         }
                     }
 
+					/* IF evaluation */
+					if (Buffer[i].MotionPackage[Buffer[i].IP_Index].MovementType == MOVE_IF) {
+						//IP must halt here until condition is evaluated by EXEC
+						if(Buffer[i].Synch_IP) { //EXEC reached condition
+							Buffer[i].Synch_IP = 0;
+							Buffer[i].Planned = 0; //wait for PP to refill buffer
 
+							if ((Buffer[i].MotionPackage[Buffer[i].IP_Index].IF_mode == IF_DI && gRobot[i]->Monitor.DI_[Buffer[i].MotionPackage[Buffer[i].IP_Index].IO_Index])||
+							(Buffer[i].MotionPackage[Buffer[i].IP_Index].IF_mode == IF_NOT_DI && !gRobot[i]->Monitor.DI_[Buffer[i].MotionPackage[Buffer[i].IP_Index].IO_Index])||
+							(Buffer[i].MotionPackage[Buffer[i].IP_Index].IF_mode == IF_R && gRobot[i]->Monitor.R_[Buffer[i].MotionPackage[Buffer[i].IP_Index].IO_Index])||
+							(Buffer[i].MotionPackage[Buffer[i].IP_Index].IF_mode == IF_NOT_R && !gRobot[i]->Monitor.R_[Buffer[i].MotionPackage[Buffer[i].IP_Index].IO_Index]))
+							{
+								//move to next line
+								Buffer[i].IP_PrgCount++;
+								Buffer[i].MotionPackage[Buffer[i].IP_Index].MovementType = MOVE_UNDEF;
+							}
+							else if ((Buffer[i].MotionPackage[Buffer[i].IP_Index].IF_mode == IF_DI && !gRobot[i]->Monitor.DI_[Buffer[i].MotionPackage[Buffer[i].IP_Index].IO_Index])||
+							(Buffer[i].MotionPackage[Buffer[i].IP_Index].IF_mode == IF_NOT_DI && gRobot[i]->Monitor.DI_[Buffer[i].MotionPackage[Buffer[i].IP_Index].IO_Index])||
+							(Buffer[i].MotionPackage[Buffer[i].IP_Index].IF_mode == IF_R && !gRobot[i]->Monitor.R_[Buffer[i].MotionPackage[Buffer[i].IP_Index].IO_Index])||
+							(Buffer[i].MotionPackage[Buffer[i].IP_Index].IF_mode == IF_NOT_R && gRobot[i]->Monitor.R_[Buffer[i].MotionPackage[Buffer[i].IP_Index].IO_Index]))
+							{
+								//look for ELSE or ENDIF
+								while((Buffer[i].MotionPackage[Buffer[i].IP_Index].Label.Found == 0) && (IP_LoopCount < MAX_LOOP_COUNT) && (StoppingError[i] == 0)) {
+									IP_LoopCount++; //used to avoid long searches for labels
+									Buffer[i].MotionPackage[Buffer[i].IP_Index].Label.Index++;
+									if(LineFromString(Robot_Program[i], line, Buffer[i].MotionPackage[Buffer[i].IP_Index].Label.Index) == STATUS_OK) {//look for label in this line
+										//look for ELSE
+										char *tmp;
+			                            /* remove comment section */
+			                            tmp = strstr(line,"//");
+			                            if (tmp != 0) {
+			                                *tmp = 0; //cut string here
+			                            }
+										tmp = my_strcasestr(line,"ENDIF");
+										if (tmp != 0) { //ENDIF found!
+											if (Buffer[i].IF_SubLevel == Buffer[i].IF_Level) {
+												Buffer[i].MotionPackage[Buffer[i].IP_Index].Label.Found = IF_FOUND_ENDIF;
+												break; //to avoid conflict with IF
+											}
+											else {
+												Buffer[i].IF_SubLevel--;
+												continue; //to avoid conflict with IF
+											}
+										}
+										tmp = my_strcasestr(line,"ELSE");
+										if (tmp != 0) { //ELSE found!
+											if (Buffer[i].IF_SubLevel == Buffer[i].IF_Level) {
+												Buffer[i].MotionPackage[Buffer[i].IP_Index].Label.Found = IF_FOUND_ELSE;
+												break;
+											}
+											continue;
+										}
+										tmp = my_strcasestr(line,"IF");
+										if (tmp != 0) { //IF found -> increase SubLevel
+											Buffer[i].IF_SubLevel++;
+										}
+									}
+			                        else { //eof and ELSE/ENDIF not found -> abort program with error
+			                            fRSVG[i].EStop = 1;
+			                            StoppingError[i] = ERR_IP_IF;
+			                            StoppingLine[i] = Buffer[i].IP_PrgCount;
+			                        }
+								}
+								
+								//ELSE found
+								if (Buffer[i].MotionPackage[Buffer[i].IP_Index].Label.Found == IF_FOUND_ELSE) {
+									Buffer[i].IP_PrgCount = Buffer[i].MotionPackage[Buffer[i].IP_Index].Label.Index+1;
+									Buffer[i].MotionPackage[Buffer[i].IP_Index].MovementType = MOVE_UNDEF;
+								}
+								//ENDIF found
+								else if (Buffer[i].MotionPackage[Buffer[i].IP_Index].Label.Found == IF_FOUND_ENDIF) {
+									Buffer[i].IP_PrgCount = Buffer[i].MotionPackage[Buffer[i].IP_Index].Label.Index+1;
+									Buffer[i].MotionPackage[Buffer[i].IP_Index].MovementType = MOVE_UNDEF;
+								}
+							} 
+						}
+					}
+					
+					/* ELSE evaluation */
+					if (Buffer[i].MotionPackage[Buffer[i].IP_Index].MovementType == MOVE_ELSE) {
+						//look for ENDIF
+						while((Buffer[i].MotionPackage[Buffer[i].IP_Index].Label.Found == 0) && (IP_LoopCount < MAX_LOOP_COUNT) && (StoppingError[i] == 0)) {
+							IP_LoopCount++; //used to avoid long searches for labels
+							Buffer[i].MotionPackage[Buffer[i].IP_Index].Label.Index++;
+							if(LineFromString(Robot_Program[i], line, Buffer[i].MotionPackage[Buffer[i].IP_Index].Label.Index) == STATUS_OK) {//look for label in this line
+								//look for ENDIF
+								char *tmp;
+	                            /* remove comment section */
+	                            tmp = strstr(line,"//");
+	                            if (tmp != 0) {
+	                                *tmp = 0; //cut string here
+	                            }
+								tmp = my_strcasestr(line,"ENDIF");
+								if (tmp != 0) { //ENDIF found!
+									if (Buffer[i].IF_SubLevel == Buffer[i].IF_Level) {
+										Buffer[i].MotionPackage[Buffer[i].IP_Index].Label.Found = IF_FOUND_ENDIF;
+										break; //to avoid conflict with IF
+									}
+									else {
+										Buffer[i].IF_SubLevel--;
+										continue; // to avoid conflict with IF
+									}
+								}
+								tmp = my_strcasestr(line,"IF");
+								if (tmp != 0) { //ENDIF found!
+									Buffer[i].IF_SubLevel++;
+								}								
+							}
+	                        else { //eof and ENDIF not found -> abort program with error
+	                            fRSVG[i].EStop = 1;
+	                            StoppingError[i] = ERR_IP_IF;
+	                            StoppingLine[i] = Buffer[i].IP_PrgCount;
+	                        }
+						}						
+						//if ENDIF found -> set IF level to 0, continue to following line
+						if (Buffer[i].MotionPackage[Buffer[i].IP_Index].Label.Found == IF_FOUND_ENDIF) {
+							Buffer[i].IP_PrgCount = Buffer[i].MotionPackage[Buffer[i].IP_Index].Label.Index+1;
+							Buffer[i].MotionPackage[Buffer[i].IP_Index].MovementType = MOVE_UNDEF;
+						}
+					}
+					
+					/*
+					gRobot[i]->Monitor.debug[1] = Buffer[i].IF_Level;
+					gRobot[i]->Monitor.debug[1] = Buffer[i].MotionPackage[Buffer[i].IP_Index].IO_Index;
+					gRobot[i]->Monitor.debug[2] = Buffer[i].MotionPackage[Buffer[i].IP_Index].IF_mode;
+					gRobot[i]->Monitor.debug[4] = Buffer[i].Planned;
+					gRobot[i]->Monitor.debug[3] = Buffer[i].Synch_IP;
+					*/
+					
                     /*** --- PP --- ***/
                     /*** plan block ***/
-                    if (Buffer[i].Synch) {
+                    if (Buffer[i].Synch_PP) {
                         //signal from EXEC -> PP can move onto next block after halting for M-synch
-                        Buffer[i].Synch = 0;
+                        Buffer[i].Synch_PP = 0;
                         Buffer[i].PP_Index++;
                         //use current position as target position of last block (for PP to plan first block)
                         memcpy(&Buffer[i].MotionPackage[Buffer[i].PP_Index_Prev].Path.TargetPointJoint,&gRobot[i]->Monitor.JointPosition,sizeof(Buffer[i].MotionPackage[Buffer[i].PP_Index_Prev].Path.TargetPointJoint));
@@ -1279,6 +1462,7 @@ unsigned short RobotControl(unsigned long Robots, unsigned char RobotsNumber)
                             
                             switch (Buffer[i].MotionPackage[Buffer[i].PP_Index].MovementType) {
                                 
+								case MOVE_IF:
                                 case MOVE_UNDEF: {
                                         // nothing programmed in this block, either program is completed or interpreter has not written anything yet
                                         if (Buffer[i].Eof) {
@@ -2519,7 +2703,7 @@ unsigned short RobotControl(unsigned long Robots, unsigned char RobotsNumber)
                                         //halt PP until M function is reset by EXEC
                                         break;
                                     }
-				
+
                                 case MOVE_WAITDI: {
                                         Buffer[i].MotionPackage[Buffer[i].PP_Index].TransitionAngle = -1; //non-tangential transition
                                         Buffer[i].MotionPackage[Buffer[i].PP_Index].Planned = 1;
@@ -2590,6 +2774,9 @@ unsigned short RobotControl(unsigned long Robots, unsigned char RobotsNumber)
                     gRobot[i]->Monitor.LineNumber = Buffer[i].MotionPackage[Buffer[i].EXEC_Index].LineNumber;
                     gRobot[i]->Monitor.TargetPoint = Buffer[i].MotionPackage[Buffer[i].EXEC_Index].TargetPoint;
 
+					//IF statement reached -> IP can evaluate and continue
+					if (Buffer[i].MotionPackage[Buffer[i].EXEC_Index].MovementType == MOVE_IF) { Buffer[i].Synch_IP = 1; }
+					
                     if (Buffer[i].Planned) {// only start moving when lookahead buffer is full (which can also happen if PP has reached Eof)
 					
                         unsigned short ContinueExec = 0; //this flag is needed to execute the next block immediately in case of: (1) non-synch M-func; (2) jumps to Subroutines; (3) movements with zero length. The loop avoids wasting a cycle time and causing speed dips.
@@ -2602,7 +2789,8 @@ unsigned short RobotControl(unsigned long Robots, unsigned char RobotsNumber)
                             }
                             
                             switch (Buffer[i].MotionPackage[Buffer[i].EXEC_Index].MovementType) {
-                                case MOVE_UNDEF: {
+                                case MOVE_IF:
+								case MOVE_UNDEF: {
                                         // nothing programmed in this block, either program is completed (quit) or interpreter has not written anything yet (wait here)
                                         if (Buffer[i].Eof) {
                                             gRobot[i]->Monitor.State = STANDSTILL_STATE;
@@ -4074,7 +4262,7 @@ unsigned short RobotControl(unsigned long Robots, unsigned char RobotsNumber)
                                                     memset(&Buffer[i].MotionPackage[Buffer[i].EXEC_Index],0,sizeof(Buffer[i].MotionPackage[Buffer[i].EXEC_Index]));
                                                     Buffer[i].EXEC_Index_Prev = Buffer[i].EXEC_Index;
                                                     Buffer[i].EXEC_Index++;
-                                                    Buffer[i].Synch = 1; //reset PP
+                                                    Buffer[i].Synch_PP = 1; //reset PP
                                                     Buffer[i].Planned = 0; //wait for PP to refill buffer
                                                 }
                                             } else {
@@ -4084,7 +4272,7 @@ unsigned short RobotControl(unsigned long Robots, unsigned char RobotsNumber)
                                                 memset(&Buffer[i].MotionPackage[Buffer[i].EXEC_Index],0,sizeof(Buffer[i].MotionPackage[Buffer[i].EXEC_Index]));
                                                 Buffer[i].EXEC_Index_Prev = Buffer[i].EXEC_Index;
                                                 Buffer[i].EXEC_Index++;
-                                                Buffer[i].Synch = 1; //reset PP
+                                                Buffer[i].Synch_PP = 1; //reset PP
                                                 Buffer[i].Planned = 0; //wait for PP to refill buffer
                                             }
                                         } else if (StoppingError[i] > 0) { //movement stopped because of error
@@ -4245,7 +4433,7 @@ unsigned short RobotControl(unsigned long Robots, unsigned char RobotsNumber)
                                                     memset(&Buffer[i].MotionPackage[Buffer[i].EXEC_Index],0,sizeof(Buffer[i].MotionPackage[Buffer[i].EXEC_Index]));
                                                     Buffer[i].EXEC_Index_Prev = Buffer[i].EXEC_Index;
                                                     Buffer[i].EXEC_Index++;
-                                                    Buffer[i].Synch = 1; //reset PP
+                                                    Buffer[i].Synch_PP = 1; //reset PP
                                                     Buffer[i].Planned = 0; //wait for PP to refill buffer
                                                 }
                                             } else{
@@ -4255,7 +4443,7 @@ unsigned short RobotControl(unsigned long Robots, unsigned char RobotsNumber)
                                                 memset(&Buffer[i].MotionPackage[Buffer[i].EXEC_Index],0,sizeof(Buffer[i].MotionPackage[Buffer[i].EXEC_Index]));
                                                 Buffer[i].EXEC_Index_Prev = Buffer[i].EXEC_Index;
                                                 Buffer[i].EXEC_Index++;
-                                                Buffer[i].Synch = 1; //reset PP
+                                                Buffer[i].Synch_PP = 1; //reset PP
                                                 Buffer[i].Planned = 0; //wait for PP to refill buffer
                                             }
                                         } else if (StoppingError[i] > 0) { //movement stopped because of error
@@ -4294,7 +4482,7 @@ unsigned short RobotControl(unsigned long Robots, unsigned char RobotsNumber)
                                                 }
                                                 memset(&Buffer[i].MotionPackage[Buffer[i].EXEC_Index],0,sizeof(Buffer[i].MotionPackage[Buffer[i].EXEC_Index]));
                                                 Buffer[i].EXEC_Index_Prev = Buffer[i].EXEC_Index;
-                                                Buffer[i].EXEC_Index++;						
+                                                Buffer[i].EXEC_Index++;	
                                             }
                                         } else if (StoppingError[i] > 0) { //movement stopped because of error
                                             gRobot[i]->Monitor.ActiveError = StoppingError[i];
@@ -4335,7 +4523,7 @@ unsigned short RobotControl(unsigned long Robots, unsigned char RobotsNumber)
                                                 }
                                                 memset(&Buffer[i].MotionPackage[Buffer[i].EXEC_Index],0,sizeof(Buffer[i].MotionPackage[Buffer[i].EXEC_Index]));
                                                 Buffer[i].EXEC_Index_Prev = Buffer[i].EXEC_Index;
-                                                Buffer[i].EXEC_Index++;						
+                                                Buffer[i].EXEC_Index++;	
                                             }
                                         } else if (StoppingError[i] > 0) { //movement stopped because of error
                                             gRobot[i]->Monitor.ActiveError = StoppingError[i];
@@ -4478,7 +4666,7 @@ unsigned short RobotControl(unsigned long Robots, unsigned char RobotsNumber)
             if (Trf_Status == STATUS_OK) {//make sure joints are within limits
                 for (k=0;k<gRobot[i]->Monitor.AxesNum;k++) {					
                     //check for joint axes limits - only if these are set (max>min)
-										if (((gRobot[i]->Monitor.JointPosition[k] > gRobot[i]->Parameters.JointLimits[k].PositionPos)||(gRobot[i]->Monitor.JointPosition[k] < gRobot[i]->Parameters.JointLimits[k].PositionNeg))&&(gRobot[i]->Parameters.JointLimits[k].PositionPos > gRobot[i]->Parameters.JointLimits[k].PositionNeg)) {	
+					if (((gRobot[i]->Monitor.JointPosition[k] > gRobot[i]->Parameters.JointLimits[k].PositionPos)||(gRobot[i]->Monitor.JointPosition[k] < gRobot[i]->Parameters.JointLimits[k].PositionNeg))&&(gRobot[i]->Parameters.JointLimits[k].PositionPos > gRobot[i]->Parameters.JointLimits[k].PositionNeg)) {	
                         WorkspaceFlag = 1;
                     }
                 }							
@@ -4521,8 +4709,8 @@ unsigned short RobotControl(unsigned long Robots, unsigned char RobotsNumber)
             Trf_Status = Transformations(&gRobot[i]->Parameters.Mechanics,TRF_INVERSE,OldAxesValues,gRobot[i]->Monitor.MountBasePosition,gRobot[i]->Monitor.JointPosition);
             if (Trf_Status == STATUS_OK) {//make sure joints are within limits
                 for (k=0;k<gRobot[i]->Monitor.AxesNum;k++) {					
-                    //check for joint axes limits - only if these are set (max>min)
-										if (((gRobot[i]->Monitor.JointPosition[k] > gRobot[i]->Parameters.JointLimits[k].PositionPos)||(gRobot[i]->Monitor.JointPosition[k] < gRobot[i]->Parameters.JointLimits[k].PositionNeg))&&(gRobot[i]->Parameters.JointLimits[k].PositionPos > gRobot[i]->Parameters.JointLimits[k].PositionNeg)) {	
+                    //check for joint axes limits - only if these are set
+					if (((gRobot[i]->Monitor.JointPosition[k] > gRobot[i]->Parameters.JointLimits[k].PositionPos)||(gRobot[i]->Monitor.JointPosition[k] < gRobot[i]->Parameters.JointLimits[k].PositionNeg))&&(gRobot[i]->Parameters.JointLimits[k].PositionPos > gRobot[i]->Parameters.JointLimits[k].PositionNeg)) {
                         WorkspaceFlag = 1;
                     }
                 }							

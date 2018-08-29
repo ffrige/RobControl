@@ -19,6 +19,9 @@
 #define MOVE_RESETDO 15
 #define MOVE_WAITDI 16
 #define MOVE_TOOL 17
+#define MOVE_IF 18
+#define MOVE_ELSE 19
+#define MOVE_END_IF 20
 #define TRF_EPSILON 0.00001
 #define STATUS_ABORT 3
 #define PHASE_START 0
@@ -35,6 +38,12 @@
 #define MAX_SUBLEVEL 10
 #define POINT_SAME 2
 #define AUX_MAX 6
+#define IF_DI 1
+#define IF_R 2
+#define IF_NOT_DI 3
+#define IF_NOT_R 4
+#define IF_FOUND_ELSE 10
+#define IF_FOUND_ENDIF 11
 
 #endif
 

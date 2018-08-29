@@ -385,47 +385,6 @@ unsigned short Interpreter(char* Block, MotionPackage_Type* Package)
 		Package->RefPoint.Axes[5] = str2double(strParameter+3);
 	}
 
-    /* look for feedrate */
-	strParameter = my_strcasestr(Block,"F");
-	if (strParameter != 0)
-	{
-		unsigned char offset;
-		if (strParameter[1]=='C')	//cartesian speed definition
-		{
-			Package->FeedrateType = FEED_CART;
-			offset = 2;
-		}
-		else if (strParameter[1]=='A')	//angular speed definition
-		{
-			Package->FeedrateType = FEED_ANG;
-			offset = 2;
-		}
-		else //default speed definition
-		{
-			Package->FeedrateType = FEED_DEFAULT;
-			offset = 1;
-		}
-		
-		for(i=offset;strParameter[i]!='\0';i++)
-		{
-			if (strParameter[i]==' ')
-				continue;	//ignore emtpy spaces
-			if (((strParameter[i]<'0')||(strParameter[i]>'9'))&&((strParameter[i]!='.')))
-				return ERR_IP_SYNTAX;	//only digits are allowed
-			else
-				break;	//digits found -> use atoff to read them
-		}
-		Package->Feedrate = str2double(strParameter+offset);	
-		if (Package->Feedrate <=0)
-		{
-			return ERR_IP_FEEDRATE;
-		}
-	}
-	else if ( ((Package->MovementType == MOVE_LINE)||(Package->MovementType == MOVE_PTP)||(Package->MovementType == MOVE_CIRCLE)||(Package->MovementType == MOVE_HOME)) &&(Package->Feedrate <= 0))
-	{
-		return ERR_IP_FEEDRATE;
-	}		
-
 	/* look for Delay time or for Signal input */
 	strMovement = my_strcasestr(Block,"WAIT");
 	if (strMovement != 0)
@@ -433,34 +392,104 @@ unsigned short Interpreter(char* Block, MotionPackage_Type* Package)
 		if (Package->MovementType != MOVE_UNDEF) return ERR_IP_CONFLICT;
 		
 		for(i=4;strMovement[i]!='\0';i++)
-		{
+			{
 			if (strMovement[i]==' ')
 				continue;	//ignore emtpy spaces
-            if ((strMovement[i]>='0' && strMovement[i]<='9')|| strMovement[i]=='.')
-            {//digits found -> wait for time
-                Package->MovementType = MOVE_DELAY;
-                break;
-            }
-            else if (strMovement[i]=='D' && strMovement[i+1]=='I')
-            {//DI found -> wait for signal
-                Package->MovementType = MOVE_WAITDI;
-                break;                
-            }
-			else
-				return ERR_IP_SYNTAX;
+			if ((strMovement[i]>='0' && strMovement[i]<='9')|| strMovement[i]=='.')
+			{//digits found -> wait for time
+				Package->MovementType = MOVE_DELAY;
+				break;
+			}
+			else if (strMovement[i]=='D' && strMovement[i+1]=='I')
+			{//DI found -> wait for signal
+				Package->MovementType = MOVE_WAITDI;
+				break;                
+			}
+			else return ERR_IP_SYNTAX;
 		}
         
-        if (Package->MovementType == MOVE_DELAY)
-        {
-            if (strMovement[i]==0) return ERR_IP_SYNTAX; //end of line - no delay time programmed
-            Package->DelayTime = str2double(strMovement+i-1);
-        }
-        else
-        {
-            if (strMovement[i+2]==0) return ERR_IP_SYNTAX; //end of line - no delay time programmed
-            Package->IO_Index = atoi(strMovement+i+2);
-        }
-    }
+		if (Package->MovementType == MOVE_DELAY)
+		{
+			if (strMovement[i]==0) return ERR_IP_SYNTAX; //end of line - no delay time programmed
+			Package->DelayTime = str2double(strMovement+i-1);
+		}
+		else
+		{
+			if (strMovement[i+2]==0) return ERR_IP_SYNTAX; //end of line - no DI index programmed
+			Package->IO_Index = atoi(strMovement+i+2);
+		}
+	}
+
+	/* look for EndIf */
+	strMovement = my_strcasestr(Block,"ENDIF");
+	if (strMovement != 0)
+	{
+		if (Package->MovementType != MOVE_UNDEF) return ERR_IP_CONFLICT;
+		Package->MovementType = MOVE_END_IF;
+		return STATUS_OK; //to avoid coflict with END and IF
+	}	
+
+	/* look for IF condition */
+	strMovement = my_strcasestr(Block,"IF");
+	if (strMovement != 0)
+	{
+		if (Package->MovementType != MOVE_UNDEF) return ERR_IP_CONFLICT;
+
+		Package->MovementType = MOVE_IF;
+		
+		for(i=2;strMovement[i]!='\0';i++) {
+			
+			if (strMovement[i]==' ')
+				continue;	//ignore emtpy spaces
+			if (strMovement[i]=='D' && strMovement[i+1]=='I')
+			{//DI found
+				Package->IF_mode = IF_DI;
+				if (strMovement[i+2]==0) return ERR_IP_SYNTAX; //end of line - no DI index programmed
+				char *endptr;
+				Package->IO_Index = strtol(strMovement+i+2,&endptr,10);
+				if (endptr == strMovement+i+2) {return ERR_IP_SYNTAX;} //char found before int
+				break;
+			}
+			else if (strMovement[i]=='!' && strMovement[i+1]=='D' && strMovement[i+2]=='I')
+			{//!DI found
+				Package->IF_mode = IF_NOT_DI;
+				if (strMovement[i+3]==0) return ERR_IP_SYNTAX; //end of line - no DI index programmed
+				char *endptr;
+				Package->IO_Index = strtol(strMovement+i+3,&endptr,10);
+				if (endptr == strMovement+i+3) {return ERR_IP_SYNTAX;} //char found before int
+				break;
+			}
+			else if (strMovement[i]=='R')
+			{//R found
+				Package->IF_mode = IF_R;
+				if (strMovement[i+1]==0) return ERR_IP_SYNTAX; //end of line - no R index programmed
+				char *endptr;
+				Package->IO_Index = strtol(strMovement+i+1,&endptr,10);
+				if (endptr == strMovement+i+1) {return ERR_IP_SYNTAX;} //char found before int
+				break;
+			}
+			else if (strMovement[i]=='!' && strMovement[i+1]=='R')
+			{//!R found
+				Package->IF_mode = IF_NOT_R;
+				if (strMovement[i+2]==0) return ERR_IP_SYNTAX; //end of line - no R index programmed
+				char *endptr;
+				Package->IO_Index = strtol(strMovement+i+2,&endptr,10);
+				if (endptr == strMovement+i+2) {return ERR_IP_SYNTAX;} //char found before int
+				break;
+			}
+			else return ERR_IP_SYNTAX;
+		}
+	}
+
+	/* look for Else */
+	strMovement = my_strcasestr(Block,"ELSE");
+	if (strMovement != 0)
+	{
+		if (Package->MovementType != MOVE_UNDEF) return ERR_IP_CONFLICT;
+		Package->MovementType = MOVE_ELSE;
+		return STATUS_OK;
+	}	
+
 
 	/* look for Tracking TRK */
 	strMovement = my_strcasestr(Block,"TRK");
@@ -580,7 +609,8 @@ unsigned short Interpreter(char* Block, MotionPackage_Type* Package)
     {
         return ERR_IP_IO_INDEX;
     }
-    
+
+
     /* look for rotation angle (or tangential offset) */
     strParameter = my_strcasestr(Block,"H");
     if ((strParameter != 0)&&(Package->MovementType != MOVE_HOME))
@@ -656,7 +686,7 @@ unsigned short Interpreter(char* Block, MotionPackage_Type* Package)
 	/* look for round edge */
 	Package->Round = -1; //round edge not defined
 	strParameter = my_strcasestr(Block,"R");
-	if ((strParameter != 0)&&(Package->MovementType != MOVE_TRK)&&(Package->MovementType != MOVE_RESETDO)) //to avoid conflicts with "R" in other commands
+	if ((strParameter != 0)&&(Package->MovementType != MOVE_TRK)&&(Package->MovementType != MOVE_RESETDO)&&(Package->MovementType != MOVE_IF)) //to avoid conflicts with "R" in other commands
 	{
 		for(i=1;strParameter[i]!='\0';i++)
 		{
@@ -673,7 +703,7 @@ unsigned short Interpreter(char* Block, MotionPackage_Type* Package)
         }
 		Package->Round = str2double(strParameter+1);
 	}
-
+	
 	/* look for End of program */
 	strMovement = my_strcasestr(Block,"END");
 	if (strMovement != 0)
@@ -681,6 +711,48 @@ unsigned short Interpreter(char* Block, MotionPackage_Type* Package)
 		if (Package->MovementType != MOVE_UNDEF) return ERR_IP_CONFLICT;
 		Package->MovementType = MOVE_END;		
 	}	
+	
+		/* look for feedrate */
+	strParameter = my_strcasestr(Block,"F");
+	if ((strParameter != 0)&&(Package->MovementType != MOVE_IF)) //avoid conflict with IF
+	{
+		unsigned char offset;
+		if (strParameter[1]=='C')	//cartesian speed definition
+		{
+			Package->FeedrateType = FEED_CART;
+			offset = 2;
+		}
+		else if (strParameter[1]=='A')	//angular speed definition
+		{
+			Package->FeedrateType = FEED_ANG;
+			offset = 2;
+		}
+			else //default speed definition
+			{
+				Package->FeedrateType = FEED_DEFAULT;
+				offset = 1;
+			}
+		
+		for(i=offset;strParameter[i]!='\0';i++)
+			{
+			if (strParameter[i]==' ')
+				continue;	//ignore emtpy spaces
+			if (((strParameter[i]<'0')||(strParameter[i]>'9'))&&((strParameter[i]!='.')))
+				return ERR_IP_SYNTAX;	//only digits are allowed
+			else
+				break;	//digits found -> use atoff to read them
+		}
+		Package->Feedrate = str2double(strParameter+offset);	
+		if (Package->Feedrate <=0)
+		{
+			return ERR_IP_FEEDRATE;
+		}
+	}
+	else if ( ((Package->MovementType == MOVE_LINE)||(Package->MovementType == MOVE_PTP)||(Package->MovementType == MOVE_CIRCLE)||(Package->MovementType == MOVE_HOME)) &&(Package->Feedrate <= 0))
+	{
+		return ERR_IP_FEEDRATE;
+	}		
+
 	
 	/* look for M functions - max 10 can be on a single line */
 	int M_count = 0;
@@ -702,6 +774,10 @@ unsigned short Interpreter(char* Block, MotionPackage_Type* Package)
 		strMovement = my_strcasestr(strMovement,"M");	
 	}
 
+	//syntax error if none of the aboves was found
+	while(*Block == ' ') Block++; //remove preceeding spaces
+	if (strlen(Block) != 0 && Package->MovementType == MOVE_UNDEF) {return ERR_IP_SYNTAX;}
+	
 	return STATUS_OK;
 	
 }
