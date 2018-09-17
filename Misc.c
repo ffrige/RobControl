@@ -155,6 +155,7 @@ unsigned short CheckConst()
 	check *=  (ZONE_DISABLED == 0);
     check *=  (ZONE_SAFE == 1);
     check *=  (ZONE_FORBIDDEN == 2);
+	check *=  (ZONE_ORIENTATION == 3);
     check *=  (DELTA == 3);
     check *=  (PALLETIZER == 4);
     check *=  (RTCP == 5);
@@ -283,6 +284,8 @@ unsigned short CheckConst()
     check *=  (ERR_TRK1 == 1250);
     check *=  (ERR_TRK2 == 1251);
     check *=  (ERR_OPTMOT == 1260);
+	check *=  (ERR_COLL_SELF == 1270);
+	check *=  (ERR_COLL_INTER == 1271);
 
     return check;
     

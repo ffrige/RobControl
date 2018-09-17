@@ -820,9 +820,8 @@ unsigned short WorkspaceMonitor(unsigned char MovementType, Path_Type* Path, dou
     short sub;
     for (k=0;k<MAX_ZONE;k++)
     {
-        //check for allowed and forbidden zones
-        if (!Workspace[k].Type)
-            continue;
+        //check only for allowed and forbidden zones
+        if (Workspace[k].Type != ZONE_SAFE && Workspace[k].Type != ZONE_FORBIDDEN) { continue; }
 
         Frame_Type subPoints[WS_SUBPOINTS];
 
@@ -1164,6 +1163,112 @@ double PTPLength(Path_Type* Path, unsigned short AxesNum, Mech_Type* Mechanics)
     }
 	
     return Length;
+
+}
+
+
+double PointToCapsule(Capsule_Type* Capsule, double Q[3])
+{ //calculates distance between point Q and capsule
+
+	double n[3],v[3],t;
+	PointsToVector(Capsule->P0,Capsule->P1,n);
+	PointsToVector(Capsule->P0,Q,v);
+	
+	double l = VectorLength(n);
+	//check if capsule is a point
+	if (l < TRF_EPSILON) {
+		return LineLengthCart(Capsule->P0,Q);
+	}
+	
+	t = DotProduct(v,n)/(l*l);
+
+	if (t<0) {
+		return LineLengthCart(Capsule->P0,Q);
+	}
+	else if (t>1) {
+		return LineLengthCart(Capsule->P1,Q);
+	}
+	else { //t between 0..1
+		double P[3];
+		P[0] = Capsule->P0[0] + t * n[0];
+		P[1] = Capsule->P0[1] + t * n[1];
+		P[2] = Capsule->P0[2] + t * n[2];
+		return LineLengthCart(P,Q);
+	}
+}
+
+void Clamp(double *s, double *t, double uv, double du, double dv, double vv, double uu) {
+	
+	if (*s>1 || *s<0) {
+		if (*s>1) { *s = 1;}
+		if (*s<0) { *s = 0;}		
+		*t = ((*s)*uv+dv)/vv;
+	}
+
+	if (*t>=0 && *t<=1) { return;}
+	if (*t>1) { *t = 1;}
+	if (*t<0) { *t = 0;}
+	*s = ((*t)*uv-du)/uu;
+	if (*s>1) { *s = 1;}
+	if (*s<0) { *s = 0;}
+	return;		
+
+}
+
+double CapsuleToCapsule(Capsule_Type* Capsule1, Capsule_Type* Capsule2)
+{//calculates distance between Capsule1 and Capsule2
+
+	double u[3],v[3];
+	PointsToVector(Capsule1->P0,Capsule1->P1,u); 
+	PointsToVector(Capsule2->P0,Capsule2->P1,v);
+	double uu = DotProduct(u,u);
+	double vv = DotProduct(v,v);	
+	
+	//check if either u or v is zero
+	if (uu < TRF_EPSILON && vv < TRF_EPSILON) { //both capsules are points
+		return LineLengthCart(Capsule1->P0,Capsule2->P0);
+	}
+	else if (uu < TRF_EPSILON) { //only Capsule1 is a point
+		return PointToCapsule(Capsule2, Capsule1->P0);
+	}
+	else if (vv < TRF_EPSILON) { //only Capsule2 is a point
+		return PointToCapsule(Capsule1, Capsule2->P0);
+	}
+	
+	//both capsules have non-zero length
+	
+	double uv = DotProduct(u,v);
+	double d0[3];
+	PointsToVector(Capsule2->P0,Capsule1->P0,d0);
+	double du = DotProduct(d0,u);
+	double dv = DotProduct(d0,v);
+		
+	double s,t;
+	
+	//check if capsules are parallel
+	double delta = uu*vv-uv*uv;
+	if (delta < TRF_EPSILON) {
+		s = 0;
+		t = dv;
+		Clamp(&s,&t,uv,du,dv,vv,uu);		
+	}
+	else {
+		s = (dv*uv-du*vv)/delta;
+		t = (dv*uu-du*uv)/delta;
+		Clamp(&s,&t,uv,du,dv,vv,uu);
+	}
+
+	double P[3], Q[3];
+
+	P[0] = Capsule1->P0[0] + s * u[0];
+	P[1] = Capsule1->P0[1] + s * u[1];
+	P[2] = Capsule1->P0[2] + s * u[2];
+
+	Q[0] = Capsule2->P0[0] + t * v[0];
+	Q[1] = Capsule2->P0[1] + t * v[1];
+	Q[2] = Capsule2->P0[2] + t * v[2];
+	
+	return LineLengthCart(P,Q);
 
 }
 

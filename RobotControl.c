@@ -17,6 +17,10 @@
 #define min(a,b) ( (a<b)?a:b )
 #define max(a,b) ( (a>b)?a:b )
 
+//read license info function
+//for LINUX only
+int mpar_getHardwareInfo(void* pInfoData, int* pSize);
+
 unsigned short RobotControl(unsigned long Robots, unsigned char RobotsNumber)
 {
     Robot_Type *gRobot[RobotsNumber];
@@ -46,11 +50,25 @@ unsigned short RobotControl(unsigned long Robots, unsigned char RobotsNumber)
     }
 	
     /* repeat all operations for configured axes */
-    int i,j,k;
+    int i,j,k,rob;
     for(i=0;i<RobotsNumber;i++) {
         
         gRobot[i] = (Robot_Type*) (Robots + sizeof(Robot_Type)*i);
         
+				/*
+        //LICENSE CHECK for ARM
+        unsigned long* p1 = 0x5e0;
+        unsigned long* p2 = 0x5e4;
+        unsigned long License = (~(*p1)^(*p2))^(gRobot[i]->Parameters.License);
+        if (License) return ERR_ROBOT_LICENSE;
+				*/
+        //LICENSE CHECK for LINUX
+				unsigned long lic[16];
+				int infoSize = sizeof(lic);
+				int Ret = mpar_getHardwareInfo(&lic, &infoSize);
+        unsigned long License = (~(lic[2])^(lic[3]))^(gRobot[i]->Parameters.License);
+        if (License) return ERR_ROBOT_LICENSE;
+
         /* prevent user from changing old monitor values (except for M-functions, R, DI_ and TrackSynch) */
         memcpy(&OldMonitor[i].M,&gRobot[i]->Monitor.M,sizeof(OldMonitor[i].M));
         memcpy(&OldMonitor[i].R_,&gRobot[i]->Monitor.R_,sizeof(OldMonitor[i].R_));
@@ -66,6 +84,9 @@ unsigned short RobotControl(unsigned long Robots, unsigned char RobotsNumber)
             gRobot[i]->Monitor.ErrorLine = 0;
         }
 		
+        /* increase evaluation time -> the more robots the faster it runs off! */
+        EvaluationTime += ((unsigned long) (gRobot[i]->Parameters.CycleTime * 1000.0));
+
         /* overwrite Tool[0] and Frame[0] so that omitting them in the programmed block is equivalent to working with no tool and no frame */
         memset(&gRobot[i]->Parameters.Tool[0],0,sizeof(gRobot[i]->Parameters.Tool[0]));
         memset(&gRobot[i]->Parameters.Frame[0],0,sizeof(gRobot[i]->Parameters.Frame[0]));
@@ -328,7 +349,7 @@ unsigned short RobotControl(unsigned long Robots, unsigned char RobotsNumber)
                 }
 				
 				else {
-                    gRobot[i]->Monitor.State = JOGGING;
+                    gRobot[i]->Monitor.State = MANUAL;
                     Jog[i] = gRobot[i]->Parameters.Jog;
                     if (Jog[i].Mode == JOG_JOINTS) {
                         memcpy(&fRSVG[i].DynamicLimits,&gRobot[i]->Parameters.JointLimits[Jog[i].AxisIndex],sizeof(fRSVG[i].DynamicLimits));
@@ -508,12 +529,12 @@ unsigned short RobotControl(unsigned long Robots, unsigned char RobotsNumber)
             }
         }
         //stop jogging when jog input command goes to zero 
-        else if(gRobot[i]->Monitor.State == JOGGING) {
+        else if(gRobot[i]->Monitor.State == MANUAL) {
             gRobot[i]->Commands.Stop = 1;
         }
 		
         //override set to 100% when jogging, max speed was already reduced when starting movement
-        if(gRobot[i]->Monitor.State == JOGGING) {
+        if(gRobot[i]->Monitor.State == MANUAL) {
             fRSVG[i].Override = 1.0;
         }
         
@@ -555,7 +576,7 @@ unsigned short RobotControl(unsigned long Robots, unsigned char RobotsNumber)
                     }
                 }
 
-                gRobot[i]->Monitor.State = MOVING;
+                gRobot[i]->Monitor.State = AUTO;
             }
         }
 		
@@ -579,14 +600,14 @@ unsigned short RobotControl(unsigned long Robots, unsigned char RobotsNumber)
                 Buffer[i].MotionPackage[BUFFER_LENGTH].EndSpeed = 0;
                 Buffer[i].EXEC_Index_Prev = BUFFER_LENGTH;
 
-                gRobot[i]->Monitor.State = MOVING;				
+                gRobot[i]->Monitor.State = AUTO;				
             }
         }
 		
         /* stop command */
         if (gRobot[i]->Commands.Stop) {
             gRobot[i]->Commands.Stop = 0;
-            if ((gRobot[i]->Monitor.State == JOGGING)||(gRobot[i]->Monitor.State == MOVING)) {
+            if ((gRobot[i]->Monitor.State == MANUAL)||(gRobot[i]->Monitor.State == AUTO)) {
                 if ((!gRobot[i]->Monitor.Halted)||(HaltedByCmd[i])) {
                     fRSVG[i].Stop = 1;
                 }
@@ -597,7 +618,7 @@ unsigned short RobotControl(unsigned long Robots, unsigned char RobotsNumber)
         /* halt command */
         if (gRobot[i]->Commands.Halt) {
             gRobot[i]->Commands.Halt = 0;
-            if ((gRobot[i]->Monitor.State == MOVING)&&(!gRobot[i]->Monitor.Halted)) {
+            if ((gRobot[i]->Monitor.State == AUTO)&&(!gRobot[i]->Monitor.Halted)) {
                 HaltedByCmd[i] = 1; //needed to differentiate between halted by command and by single step mode
                 gRobot[i]->Monitor.Halted = 1;
             }
@@ -606,7 +627,7 @@ unsigned short RobotControl(unsigned long Robots, unsigned char RobotsNumber)
         /* continue command */
         if (gRobot[i]->Commands.Continue) {
             //gRobot[i]->Commands.Continue = 0; -> do not reset here, it is needed later for single step restart -> reset at end of cycle
-            if (gRobot[i]->Monitor.State == MOVING) {
+            if (gRobot[i]->Monitor.State == AUTO) {
                 gRobot[i]->Monitor.Halted = 0;
                 HaltedByCmd[i] = 0;
             }
@@ -652,24 +673,40 @@ unsigned short RobotControl(unsigned long Robots, unsigned char RobotsNumber)
 			}							
 		}
 		
-        if (gRobot[i]->Monitor.State == MOVING) {
+        if (gRobot[i]->Monitor.State == AUTO) {
             /* WORKSPACE MONITORING (cyclic) */
-            
+            			
+			//check for SAFE and FORBIDDEN zones
             for (k=0;k<MAX_ZONE;k++) {
-                //check for allowed and forbidden zones
-                if (!gRobot[i]->Parameters.Workspace[k].Type)   continue;
-
-                unsigned short tmpInside = PointInBox(gRobot[i]->Monitor.ToolBasePosition,gRobot[i]->Parameters.Workspace[k].PositionMin,gRobot[i]->Parameters.Workspace[k].PositionMax);
-                if ((!tmpInside && gRobot[i]->Parameters.Workspace[k].Type==ZONE_SAFE) || (tmpInside && gRobot[i]->Parameters.Workspace[k].Type==ZONE_FORBIDDEN)) {                   
-                    fRSVG[i].EStop = 1;
-                    StoppingError[i] = ERR_WORKSPACE_ZONE1 + k;
-                    StoppingLine[i] = gRobot[i]->Monitor.LineNumber;
-                    break;
-                }                
+                if (gRobot[i]->Parameters.Workspace[k].Type != ZONE_SAFE && gRobot[i]->Parameters.Workspace[k].Type != ZONE_FORBIDDEN)  { continue; }
+				for (j=0;j<=gRobot[i]->Monitor.AxesNum+1;j++) { //loop over all wireframe points (including tool)
+	                unsigned short tmpInside = PointInBox(gRobot[i]->Monitor.WireFrame[j].Axes,gRobot[i]->Parameters.Workspace[k].PositionMin,gRobot[i]->Parameters.Workspace[k].PositionMax);
+	                if ((!tmpInside && gRobot[i]->Parameters.Workspace[k].Type==ZONE_SAFE) || (tmpInside && gRobot[i]->Parameters.Workspace[k].Type==ZONE_FORBIDDEN)) {                   
+	                    fRSVG[i].EStop = 1;
+	                    StoppingError[i] = ERR_WORKSPACE_ZONE1 + k;
+	                    StoppingLine[i] = gRobot[i]->Monitor.LineNumber;
+	                    break;
+	                }
+				}             
             }            
             
+			//check for safe ORIENTATION
+            for (k=0;k<MAX_ZONE;k++) {
+                if (gRobot[i]->Parameters.Workspace[k].Type != ZONE_ORIENTATION)  { continue; }
+				Quat_Type actOri, limitOri;
+				EulerToQuat(gRobot[i]->Monitor.PathPosition[3],gRobot[i]->Monitor.PathPosition[4],gRobot[i]->Monitor.PathPosition[5],&actOri);
+				EulerToQuat(gRobot[i]->Parameters.Workspace[k].Orientation[0],gRobot[i]->Parameters.Workspace[k].Orientation[1],gRobot[i]->Parameters.Workspace[k].Orientation[2],&limitOri);
+				double deltaOri = 2 * fabs(AngleBetweenQuat(limitOri,&actOri)) / PI * 180.0; //angle between orientations is double of angle between unit quaternions!
+				if (deltaOri >= gRobot[i]->Parameters.Workspace[k].MaxAngle) {
+					fRSVG[i].EStop = 1;
+	                StoppingError[i] = ERR_WORKSPACE_ZONE1 + k;
+	                StoppingLine[i] = gRobot[i]->Monitor.LineNumber;
+	                break;
+				}
+            }            
+            
+			//check for JOINT limits - only if these are set (max>min)
             for (k=0;k<gRobot[i]->Monitor.AxesNum;k++) {	
-                //check for joint axes limits - only if these are set (max>min)
                 if (((gRobot[i]->Monitor.JointPosition[k] > gRobot[i]->Parameters.JointLimits[k].PositionPos)||(gRobot[i]->Monitor.JointPosition[k] < gRobot[i]->Parameters.JointLimits[k].PositionNeg))&&(gRobot[i]->Parameters.JointLimits[k].PositionPos > gRobot[i]->Parameters.JointLimits[k].PositionNeg)) {
                     fRSVG[i].EStop = 1;
                     StoppingError[i] = ERR_LIMIT_J1 + k;
@@ -677,17 +714,71 @@ unsigned short RobotControl(unsigned long Robots, unsigned char RobotsNumber)
                 }
             }							            
 
+			//check for AUX limits - only if these are set (max>min)
 			for (k=0;k<AUX_MAX;k++) {	
-				//check for auxiliary axes limits - only if these are set (max>min)
 				if (((gRobot[i]->Monitor.AuxPosition[k] > gRobot[i]->Parameters.AuxLimits[k].PositionPos)||(gRobot[i]->Monitor.AuxPosition[k] < gRobot[i]->Parameters.AuxLimits[k].PositionNeg))&&(gRobot[i]->Parameters.AuxLimits[k].PositionPos > gRobot[i]->Parameters.AuxLimits[k].PositionNeg)) {
 					fRSVG[i].EStop = 1;
 					StoppingError[i] = ERR_LIMIT_A1 + k;
 					StoppingLine[i] = gRobot[i]->Monitor.LineNumber;
 				}
-			}							            
+			}	
+			
+			//SELF-collision detection
+			if (gRobot[i]->Parameters.Collision.Self) {
+				for (k=0;k<gRobot[i]->Monitor.AxesNum-2;k++) { //skip last two capsules because they (could) contain the TCP
+					if (gRobot[i]->Parameters.Collision.LinkSize[k] <= 0) {continue;}
+					//generate capsule for each joint
+					Capsule_Type jCaps;
+					memcpy(jCaps.P0,gRobot[i]->Monitor.WireFrame[k].Axes,sizeof(jCaps.P0));
+					memcpy(jCaps.P1,gRobot[i]->Monitor.WireFrame[k+1].Axes,sizeof(jCaps.P1));
+					jCaps.radius = gRobot[i]->Parameters.Collision.LinkSize[k]*.5;
+					double dist = PointToCapsule(&jCaps,gRobot[i]->Monitor.ToolBasePosition);
+					if (dist <= jCaps.radius) {
+						fRSVG[i].EStop = 1;
+						StoppingError[i] = ERR_COLL_SELF;
+						StoppingLine[i] = gRobot[i]->Monitor.LineNumber;
+						break;						
+					}
+				}
+			}
+
+			//INTER-collision detection
+			if (gRobot[i]->Parameters.Collision.Inter) {
+				for (k=0;k<=gRobot[i]->Monitor.AxesNum;k++) {
+					if (gRobot[i]->Parameters.Collision.LinkSize[k] <= 0) {continue;}
+					//generate capsule for each joint
+					Capsule_Type jCaps;
+					memcpy(jCaps.P0,gRobot[i]->Monitor.WireFrame[k].Axes,sizeof(jCaps.P0));
+					memcpy(jCaps.P1,gRobot[i]->Monitor.WireFrame[k+1].Axes,sizeof(jCaps.P1));
+					jCaps.radius = gRobot[i]->Parameters.Collision.LinkSize[k]*.5;
+					//loop over other robots
+					for(rob=0;rob<RobotsNumber;rob++) {
+						if (rob == i) {continue;} //own robot
+						if (!gRobot[rob]->Parameters.Collision.Inter) {continue;} //inter-collision not activated for this robot
+						//loop over all joints of robot
+						for (j=0;j<=gRobot[rob]->Monitor.AxesNum;j++) {
+							if (gRobot[rob]->Parameters.Collision.LinkSize[j] <= 0) {continue;}
+							//generate capsule for each joint
+							Capsule_Type jjCaps;
+							memcpy(jjCaps.P0,gRobot[rob]->Monitor.WireFrame[j].Axes,sizeof(jjCaps.P0));
+							memcpy(jjCaps.P1,gRobot[rob]->Monitor.WireFrame[j+1].Axes,sizeof(jjCaps.P1));
+							jjCaps.radius = gRobot[rob]->Parameters.Collision.LinkSize[j]*.5;
+							double dist = CapsuleToCapsule(&jCaps,&jjCaps);
+							if (dist <= (jCaps.radius+jjCaps.radius)) {
+								fRSVG[i].EStop = 1;
+								StoppingError[i] = ERR_COLL_INTER;
+								StoppingLine[i] = gRobot[i]->Monitor.LineNumber;
+								break;						
+							}
+						} //loop joints of robot B
+					} //loop robots
+				} //loop joints of robot A				
+			}
+
+			
 		}
 
-        if ((gRobot[i]->Monitor.State == JOGGING)&&((Jog[i].Mode == JOG_BASE)||(Jog[i].Mode == JOG_TOOL))) {
+        if ((gRobot[i]->Monitor.State == MANUAL)&&((Jog[i].Mode == JOG_BASE)||(Jog[i].Mode == JOG_TOOL))) {
             // do not check limits when jogging joints - user needs to be able to move back to workspace with manual movements
             for (k=0;k<gRobot[i]->Monitor.AxesNum;k++) {					
                 //check for joint axes limits - only if these are set (max>min)
@@ -751,7 +842,7 @@ unsigned short RobotControl(unsigned long Robots, unsigned char RobotsNumber)
                     break;
                 }
 
-            case JOGGING: {
+            case MANUAL: {
                     gRobot[i]->Monitor.Moving = 1;
 								
                     if (fRSVG[i].Done) {
@@ -1029,7 +1120,7 @@ unsigned short RobotControl(unsigned long Robots, unsigned char RobotsNumber)
                     break;
                 }
                 
-            case MOVING: {
+            case AUTO: {
                     
                     gRobot[i]->Monitor.Moving = 1;
 
@@ -1538,7 +1629,7 @@ unsigned short RobotControl(unsigned long Robots, unsigned char RobotsNumber)
                                         //path workspace monitoring
                                         for (k=0;k<MAX_ZONE;k++) {
                                             //check for allowed and forbidden zones
-                                            if (!gRobot[i]->Parameters.Workspace[k].Type)   continue;
+                                            if (gRobot[i]->Parameters.Workspace[k].Type != ZONE_SAFE && gRobot[i]->Parameters.Workspace[k].Type != ZONE_FORBIDDEN)  { continue; }
                                     
                                             unsigned short tmpInsideL1 = PointInBox(tmpStartPoint,gRobot[i]->Parameters.Workspace[k].PositionMin,gRobot[i]->Parameters.Workspace[k].PositionMax);
                                             unsigned short tmpInsideL2 = PointInBox(tmpTargetPoint,gRobot[i]->Parameters.Workspace[k].PositionMin,gRobot[i]->Parameters.Workspace[k].PositionMax);
@@ -4621,7 +4712,7 @@ unsigned short RobotControl(unsigned long Robots, unsigned char RobotsNumber)
                     }
 								
                     OldSVGPos[i] = fRSVG[i].Position;
-                    break;	//end case MOVING
+                    break;	//end case AUTO
                     
                 }
         
@@ -4744,6 +4835,13 @@ unsigned short RobotControl(unsigned long Robots, unsigned char RobotsNumber)
             gRobot[i]->Monitor.PathSpeed = fRSVG[i].Speed * RedFactor[i];
         }
 
+		//calculate wireframe model based on current joints position
+		Trf_Status = Wireframe(&gRobot[i]->Parameters.Mechanics,gRobot[i]->Monitor.JointPosition,gRobot[i]->Monitor.WireFrame);
+		//last point is TCP
+		memcpy(gRobot[i]->Monitor.WireFrame[gRobot[i]->Monitor.AxesNum+1].Axes,gRobot[i]->Monitor.ToolBasePosition,sizeof(gRobot[i]->Monitor.WireFrame[0].Axes));
+		//second to last point is MP
+		memcpy(gRobot[i]->Monitor.WireFrame[gRobot[i]->Monitor.AxesNum].Axes,gRobot[i]->Monitor.MountBasePosition,sizeof(gRobot[i]->Monitor.WireFrame[0].Axes));
+		
 		//calculate joints speeds
 		for (k=0;k<gRobot[i]->Monitor.AxesNum;k++) {					
 			gRobot[i]->Monitor.JointSpeed[k] = (gRobot[i]->Monitor.JointPosition[k] - OldMonitor[i].JointPosition[k]) / TaskCycleTime;
@@ -4824,6 +4922,8 @@ unsigned short RobotControl(unsigned long Robots, unsigned char RobotsNumber)
             } else {
                 gRobot[i]->Monitor.SetToDrive.Joints[k] = 0;
             }
+            //add License check (should be zero in normal cases)
+            gRobot[i]->Monitor.SetToDrive.Joints[k] += License;
         }
 		for (k=0;k<AUX_MAX;k++) {
 			if (gRobot[i]->Parameters.UnitsRatio.Aux[k].AxisUnits != 0) {
@@ -4831,6 +4931,8 @@ unsigned short RobotControl(unsigned long Robots, unsigned char RobotsNumber)
 				} else {
 				gRobot[i]->Monitor.SetToDrive.Aux[k] = 0;
 			}
+			//add License check (should be zero in normal cases)
+			gRobot[i]->Monitor.SetToDrive.Aux[k] += License;
 		}
 
         //reset AxesMoved flag

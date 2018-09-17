@@ -4,6 +4,8 @@
 /* Declaration of global constants, datatypes and functions for the RobControl library */ 
 
 #define MAX_PRG_SIZE 10000
+#define ERR_COLL_INTER 1271
+#define ERR_COLL_SELF 1270
 #define ERR_OPTMOT 1260
 #define ERR_TRK2 1251
 #define ERR_TRK1 1250
@@ -124,6 +126,7 @@
 #define RTCP 5
 #define PALLETIZER 4
 #define TRF_POSE_BACK 4
+#define ZONE_ORIENTATION 3
 #define DELTA 3
 #define TRF_POSE_CONCAVE 2
 #define ZONE_FORBIDDEN 2
@@ -152,8 +155,8 @@
 
 typedef enum Robot_Monitor_State_Type
 {	STANDSTILL_STATE = 0,
-	JOGGING = 10,
-	MOVING = 20,
+	MANUAL = 10,
+	AUTO = 20,
 	ERROR_STATE = 255
 } Robot_Monitor_State_Type;
 
@@ -194,7 +197,15 @@ typedef struct Robot_Parameter_Workspace_Type
 {	unsigned char Type;
 	double PositionMin[3];
 	double PositionMax[3];
+	double Orientation[3];
+	double MaxAngle;
 } Robot_Parameter_Workspace_Type;
+
+typedef struct Robot_Parameter_Collision_Type
+{	double LinkSize[7];
+	unsigned short Self;
+	unsigned short Inter;
+} Robot_Parameter_Collision_Type;
 
 typedef struct UnitsRatio_Type
 {	unsigned long MotorUnits;
@@ -284,6 +295,7 @@ typedef struct Robot_Parameter_Type
 	struct Robot_Parameter_Path_Type PathLimits;
 	struct Robot_Parameter_JointLimits_Type AuxLimits[6];
 	struct Robot_Parameter_Workspace_Type Workspace[11];
+	struct Robot_Parameter_Collision_Type Collision;
 	struct Robot_Parameter_UnitsRatio_Type UnitsRatio;
 	struct Mech_Type Mechanics;
 	struct Robot_Parameter_Calibration_Type Calibration;
@@ -320,6 +332,7 @@ typedef struct Robot_Monitor_Type
 	struct DrivesInterface_Type SetToDrive;
 	double MountBasePosition[6];
 	double ToolBasePosition[6];
+	struct Frame_Type WireFrame[8];
 	unsigned long LineNumber;
 	char CurrentBlock[101];
 	double BlockLength;

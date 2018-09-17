@@ -3,6 +3,58 @@
 #include "Robots.h"
 #include "Misc.h"
 
+
+unsigned short Wireframe(struct Mech_Type* Mechanics, double JointAxes[6], Frame_Type WireframePoints[8])
+{	//calculate position of points in wireframe model
+
+	unsigned short Status;
+	
+	//reset old values
+	memset(WireframePoints,0,sizeof(WireframePoints));
+
+	switch (Mechanics->Type)
+	{
+		case CNC: {
+			//TODO
+			break;
+			}
+	
+		case SCARA: {
+			Status = ScaraWireFrame(Mechanics->Links, JointAxes, WireframePoints);
+			break;
+			}
+	
+		case DELTA: {
+			Status = DeltaWireFrame(Mechanics->Links, JointAxes, WireframePoints);
+			break;
+			}
+	
+		case PALLETIZER: {
+			Status = PalletWireFrame(Mechanics->Links, JointAxes, WireframePoints);
+			break;
+			}
+	
+        case RTCP: {
+            Status = RTCPWireFrame(Mechanics->Links, JointAxes, WireframePoints);
+            break;
+			}
+           
+        case ARM: {
+			Status = ArmWireFrame(Mechanics->Links, JointAxes, WireframePoints);
+			break;
+			}
+
+		case USER: {
+			//TODO
+			break;
+			}
+
+		default : {
+			Status = ERR_TRF_MECH_NOT_SUPPORTED;
+			}
+	}
+}
+
 unsigned short Transformations(struct Mech_Type* Mechanics, unsigned char Mode, double JointAxes[6], double PathAxes[6], double Axes[6])
 {
 	
@@ -82,10 +134,8 @@ unsigned short Transformations(struct Mech_Type* Mechanics, unsigned char Mode, 
 			Axes[i] = RoundToEpsilon(Axes[i]);
 		}
 
-	}
-
-
-	
+	}	
+		
 	
 	else if (Mode == TRF_INVERSE)	//inverse transformations -> calculate joint axes from path axes
 	{

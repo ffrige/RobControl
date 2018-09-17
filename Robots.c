@@ -17,6 +17,21 @@ unsigned short ArmDirect(Link_Type Links[6], double JointAxes[6], double PathAxe
     double Q5 = JointAxes[4];
     double Q6 = JointAxes[5];
 	
+	double c1 = cosd(Q1);
+	double s1 = sind(Q1);
+	double c2 = cosd(Q2);
+	double s2 = sind(Q2);
+	double c3 = cosd(Q3);
+	double s3 = sind(Q3);
+	double c4 = cosd(Q4);
+	double s4 = sind(Q4);
+	double c5 = cosd(Q5);
+	double s5 = sind(Q5);
+	double c6 = cosd(Q6);
+	double s6 = sind(Q6);
+	double c23 = cosd(Q2+Q3);
+	double s23 = sind(Q2+Q3);
+	
     double a1x = Links[1].Offset.X;
     //double a1y = Links[1].Offset.Y;
     double a1z = Links[1].Offset.Z;
@@ -46,16 +61,16 @@ unsigned short ArmDirect(Link_Type Links[6], double JointAxes[6], double PathAxe
         return ERR_TRF_MECH;
     }
 
-    double aaa = cosd(Q3)*(a3x+a4x+cosd(Q5)*a5x) + sind(Q3)*(a3z-cosd(Q4)*sind(Q5)*a5x);
-    double bbb = -sind(Q3)*(a3x+a4x+cosd(Q5)*a5x) + cosd(Q3)*(a3z-cosd(Q4)*sind(Q5)*a5x);
-    double ddd = a1x + cosd(Q2)*aaa + sind(Q2)*(bbb+a2z);
-    double fff = a1z - sind(Q2)*aaa + cosd(Q2)*(bbb+a2z);
+    double aaa = c3*(a3x+a4x+c5*a5x) + s3*(a3z-c4*s5*a5x);
+    double bbb = -s3*(a3x+a4x+c5*a5x) + c3*(a3z-c4*s5*a5x);
+    double ddd = a1x + c2*aaa + s2*(bbb+a2z);
+    double fff = a1z - s2*aaa + c2*(bbb+a2z);
 
     /* X axis */
-    tmpAxes[0] = cosd(Q1)*ddd - sind(Q1)*sind(Q4)*sind(Q5)*a5x;
+    tmpAxes[0] = c1*ddd - s1*s4*s5*a5x;
 
     /* Y axis */	
-    tmpAxes[1] = sind(Q1)*ddd + cosd(Q1)*sind(Q4)*sind(Q5)*a5x;
+    tmpAxes[1] = s1*ddd + c1*s4*s5*a5x;
 	
     /* Z axis */
     tmpAxes[2] = fff;
@@ -63,24 +78,24 @@ unsigned short ArmDirect(Link_Type Links[6], double JointAxes[6], double PathAxe
 	
     /* compose R_total from all joints rotations */	
     double R_total[3][3];
-    double temp01 = -sind(Q1)*cosd(Q4)+cosd(Q1)*sind(Q2+Q3)*sind(Q4);
-    double temp02 = cosd(Q1)*cosd(Q2+Q3)*sind(Q5)+cosd(Q5)*sind(Q1)*sind(Q4)+cosd(Q5)*cosd(Q1)*sind(Q2+Q3)*cosd(Q4);
-    double temp11 = cosd(Q1)*cosd(Q4)+sind(Q1)*sind(Q2+Q3)*sind(Q4);
-    double temp12 = sind(Q1)*cosd(Q2+Q3)*sind(Q5)-cosd(Q1)*sind(Q4)*cosd(Q5)+cosd(Q5)*sind(Q1)*sind(Q2+Q3)*cosd(Q4);
-    double temp21 = cosd(Q2+Q3)*sind(Q4);
-    double temp22 = -sind(Q2+Q3)*sind(Q5)+cosd(Q2+Q3)*cosd(Q4)*cosd(Q5);
+    double temp01 = -s1*c4+c1*s23*s4;
+    double temp02 = c1*c23*s5+c5*s1*s4+c5*c1*s23*c4;
+    double temp11 = c1*c4+s1*s23*s4;
+    double temp12 = s1*c23*s5-c1*s4*c5+c5*s1*s23*c4;
+    double temp21 = c23*s4;
+    double temp22 = -s23*s5+c23*c4*c5;
 
-    R_total[0][0] = cosd(Q1)*cosd(Q2+Q3)*cosd(Q5)-sind(Q1)*sind(Q4)*sind(Q5)-cosd(Q1)*sind(Q2+Q3)*cosd(Q4)*sind(Q5);
-    R_total[0][1] = cosd(Q6)*temp01 + sind(Q6)*temp02;
-    R_total[0][2] = -sind(Q6)*temp01 + cosd(Q6)*temp02;
+    R_total[0][0] = c1*c23*c5-s1*s4*s5-c1*s23*c4*s5;
+    R_total[0][1] = c6*temp01 + s6*temp02;
+    R_total[0][2] = -s6*temp01 + c6*temp02;
 	
-    R_total[1][0] = sind(Q1)*cosd(Q2+Q3)*cosd(Q5)+cosd(Q1)*sind(Q4)*sind(Q5)-sind(Q1)*sind(Q2+Q3)*cosd(Q4)*sind(Q5);
-    R_total[1][1] = cosd(Q6)*temp11 + sind(Q6)*temp12;
-    R_total[1][2] = -sind(Q6)*temp11 + cosd(Q6)*temp12;
+    R_total[1][0] = s1*c23*c5+c1*s4*s5-s1*s23*c4*s5;
+    R_total[1][1] = c6*temp11 + s6*temp12;
+    R_total[1][2] = -s6*temp11 + c6*temp12;
 	
-    R_total[2][0] = -sind(Q2+Q3)*cosd(Q5)-cosd(Q2+Q3)*cosd(Q4)*sind(Q5);
-    R_total[2][1] = cosd(Q6)*temp21 + sind(Q6)*temp22;
-    R_total[2][2] = -sind(Q6)*temp21 + cosd(Q6)*temp22;
+    R_total[2][0] = -s23*c5-c23*c4*s5;
+    R_total[2][1] = c6*temp21 + s6*temp22;
+    R_total[2][2] = -s6*temp21 + c6*temp22;
 	
     /* A,B,C axis */
     double A,B,C;
@@ -102,6 +117,101 @@ unsigned short ArmDirect(Link_Type Links[6], double JointAxes[6], double PathAxe
 
 } 
 
+
+unsigned short ArmWireFrame(Link_Type Links[6], double JointAxes[6], Frame_Type WireFrame[8])
+{ //calculate positions of individual links
+
+    //simplify notation
+    double Q1 = JointAxes[0];
+    double Q2 = JointAxes[1];
+    double Q3 = JointAxes[2];
+    double Q4 = JointAxes[3];
+    double Q5 = JointAxes[4];
+    double Q6 = JointAxes[5];
+	
+	double c1 = cosd(Q1);
+	double s1 = sind(Q1);
+	double c2 = cosd(Q2);
+	double s2 = sind(Q2);
+	double c3 = cosd(Q3);
+	double s3 = sind(Q3);
+	double c4 = cosd(Q4);
+	double s4 = sind(Q4);
+	double c5 = cosd(Q5);
+	double s5 = sind(Q5);
+	
+    double a1x = Links[1].Offset.X;
+    //double a1y = Links[1].Offset.Y;
+    double a1z = Links[1].Offset.Z;
+    //double a2x = Links[2].Offset.X;
+    //double a2y = Links[2].Offset.Y;
+    double a2z = Links[2].Offset.Z;
+    double a3x = Links[3].Offset.X;
+    //double a3y = Links[3].Offset.Y;
+    double a3z = Links[3].Offset.Z;
+    double a4x = Links[4].Offset.X;
+    double a5x = Links[5].Offset.X;
+	
+    /* check mechanical parameters consistency */
+    if ((a1z < 0)||(a2z <= 0)||(a3z < 0)||((a3x+a4x) <= 0)||(a5x <= 0)) {
+        return ERR_TRF_MECH;
+    }
+	
+	//origin
+	WireFrame[0].Axes[0] = 0;
+	WireFrame[0].Axes[1] = 0;
+	WireFrame[0].Axes[2] = 0;
+	
+	//end of link 1
+	WireFrame[1].Axes[0] = c1*a1x;
+	WireFrame[1].Axes[1] = s1*a1x;
+	WireFrame[1].Axes[2] = a1z;
+	
+	//end of link 2
+	WireFrame[2].Axes[0] = c1*(s2*a2z+a1x);
+	WireFrame[2].Axes[1] = s1*(s2*a2z+a1x);
+	WireFrame[2].Axes[2] = a1z+c2*a2z;
+
+	//end of link 3
+	double d1 = c3*a3x+s3*a3z;
+	double d2 = -s3*a3x+c3*a3z+a2z;
+	WireFrame[3].Axes[0] = c1*(c2*d1+s2*d2+a1x);
+	WireFrame[3].Axes[1] = s1*(c2*d1+s2*d2+a1x);
+	WireFrame[3].Axes[2] = a1z-s2*d1+c2*d2;
+
+	//end of link 4
+	d1 = c3*(a3x+a4x)+s3*a3z;
+	d2 = -s3*(a3x+a4x)+c3*a3z+a2z;
+	WireFrame[4].Axes[0] = c1*(c2*d1+s2*d2+a1x);
+	WireFrame[4].Axes[1] = s1*(c2*d1+s2*d2+a1x);
+	WireFrame[4].Axes[2] = a1z-s2*d1+c2*d2;
+
+	//end of link 5
+	d1 = c3*(a3x+a4x+c5*a5x)+s3*(a3z-c4*s5*a5x);
+	d2 = -s3*(a3x+a4x+c5*a5x)+c3*(a3z-c4*s5*a5x)+a2z;
+	WireFrame[5].Axes[0] = c1*(c2*d1+s2*d2+a1x)-s1*s4*s5*a5x;
+	WireFrame[5].Axes[1] = s1*(c2*d1+s2*d2+a1x)+c1*s4*s5*a5x;
+	WireFrame[5].Axes[2] = a1z-s2*d1+c2*d2;
+
+    /* consider zero offset (position and orientation of base point with respect to world origin) */
+    double ZeroFrame[6];
+    ZeroFrame[0] = Links[0].Offset.X;
+    ZeroFrame[1] = Links[0].Offset.Y;
+    ZeroFrame[2] = Links[0].Offset.Z;
+    ZeroFrame[3] = Links[0].Rotation.X;
+    ZeroFrame[4] = Links[0].Rotation.Y;
+    ZeroFrame[5] = Links[0].Rotation.Z;
+	int i,j;
+	for (i=0;i<6;i++) {
+		double tmpAxes[6];
+		for (j=0;j<3;j++) { tmpAxes[j] = WireFrame[i].Axes[j]; }
+		for (j=3;j<6;j++) { tmpAxes[j] = 0; }
+		SubFrame3D(tmpAxes,ZeroFrame,0,0,0,WireFrame[i].Axes);
+	}
+
+    return STATUS_OK;
+
+}
 
 
 unsigned short ArmInverse(Link_Type Links[6], double PathAxes[6], double JointAxes[6], double Axes[6])
@@ -700,6 +810,193 @@ unsigned short RTCP_Inverse(Link_Type Links[6], double PathAxes[6], double Joint
     return STATUS_OK;
 }
 
+unsigned short RTCPWireFrame(Link_Type Links[6], double JointAxes[6], Frame_Type WireFrame[8])
+{
+    int i,j;
+	
+    //simplify notation
+    double Q1 = JointAxes[0];
+    double Q2 = JointAxes[1];
+    double Q3 = JointAxes[2];
+    double Q4 = JointAxes[3];
+    double Q5 = JointAxes[4];
+	
+	double c4 = cosd(Q4);
+	double s4 = sind(Q4);
+	double c5 = cosd(Q5);
+	double s5 = sind(Q5);
+	
+    double a1x = Links[1].Offset.X;
+    double a1y = Links[1].Offset.Y;
+    double a1z = Links[1].Offset.Z;
+    double a2x = Links[2].Offset.X;
+    double a2y = Links[2].Offset.Y;
+    double a2z = Links[2].Offset.Z;
+    double a3x = Links[3].Offset.X;
+    double a3y = Links[3].Offset.Y;
+    double a3z = Links[3].Offset.Z;
+
+    double r2x = Links[2].Rotation.X;
+    double r2y = Links[2].Rotation.Y;
+    double r2z = Links[2].Rotation.Z;
+    double r3x = Links[3].Rotation.X;
+    double r3y = Links[3].Rotation.Y;
+    double r3z = Links[3].Rotation.Z;
+   
+    /* check mechanical parameters consistency */
+    if (r2x+r2y+r2z != 1 || r3x+r3y+r3z != 1)
+    {
+        return ERR_TRF_ROT;
+    }
+
+    double A1,B1,C1;
+    if (r2x == 1) {
+        A1 = Q4;
+        B1 = 0;
+        C1 = 0;
+    } else if (r2y == 1) {
+        A1 = 0;
+        B1 = Q4;
+        C1 = 0;
+    } else if (r2z == 1) {
+        A1 = 0;
+        B1 = 0;
+        C1 = Q4;
+    }
+        
+    double A2,B2,C2;
+    if (r3x == 1) {
+        A2 = Q5;
+        B2 = 0;
+        C2 = 0;
+    } else if (r3y == 1) {
+        A2 = 0;
+        B2 = Q5;
+        C2 = 0;
+    } else if (r3z == 1) {
+        A2 = 0;
+        B2 = 0;
+        C2 = Q5;
+    }
+        
+    /* build homogeneous matrices */
+    double P1[4],P2[4];
+    double H1[4][4];
+    double H2[4][4];
+    
+    P1[0] = a2x;    
+    P1[1] = a2y;    
+    P1[2] = a2z;    
+    P1[3] = 1;    
+    
+    P2[0] = a3x;    
+    P2[1] = a3y;    
+    P2[2] = a3z;    
+    P2[3] = 1;    
+    
+    H2[0][3] = a2x;
+    H2[1][3] = a2y;
+    H2[2][3] = a2z;
+    H2[3][3] = 1;
+
+    H1[0][3] = a1x + Q1;
+    H1[1][3] = a1y + Q2;
+    H1[2][3] = a1z + Q3;
+    H1[3][3] = 1;
+
+    for(i=0;i<3;i++) {
+        H1[3][i] = 0;
+        H2[3][i] = 0;
+    }
+    
+    double R[3][3];
+    ComposeMatrix(R, A1, B1, C1);
+    for (i=0;i<3;i++) {
+        for (j=0;j<3;j++) {
+            H1[i][j] = R[i][j]; 
+        }
+    }
+   
+    ComposeMatrix(R, A2, B2, C2);
+    for (i=0;i<3;i++) {
+        for (j=0;j<3;j++) {
+            H2[i][j] = R[i][j];
+        }
+    }
+
+	//origin
+	WireFrame[0].Axes[0] = H1[0][3];
+	WireFrame[0].Axes[1] = H1[1][3];
+	WireFrame[0].Axes[2] = H1[2][3];
+	
+	double WF1[4];
+    /* WF1 = H1xP1 */
+    for(i=0;i<4;i++) {
+        WF1[i] = 0;
+        for (j=0;j<4;j++) {
+            WF1[i] += H1[i][j] * P1[j];
+        }
+    }
+	
+	//end of link 1
+	WireFrame[1].Axes[0] = WF1[0];
+	WireFrame[1].Axes[1] = WF1[1];
+	WireFrame[1].Axes[2] = WF1[2];
+
+
+	double WF2[4],tmpWF[4];
+    /* WF2 = H1x(H2xP2) */
+    for(i=0;i<4;i++) {
+        tmpWF[i] = 0;
+        for (j=0;j<4;j++) {
+            tmpWF[i] += H2[i][j] * P2[j];
+        }
+    }
+    for(i=0;i<4;i++) {
+        WF2[i] = 0;
+        for (j=0;j<4;j++) {
+            WF2[i] += H1[i][j] * tmpWF[j];
+        }
+    }
+		
+	//end of link 2
+	WireFrame[2].Axes[0] = WF2[0];
+	WireFrame[2].Axes[1] = WF2[1];
+	WireFrame[2].Axes[2] = WF2[2];
+	
+	//copy last point to all next ones
+	//because RTCP is a 6 variables structure
+	//even though it only has 5 dof
+	WireFrame[3].Axes[0] = WF2[0];
+	WireFrame[3].Axes[1] = WF2[1];
+	WireFrame[3].Axes[2] = WF2[2];
+	WireFrame[4].Axes[0] = WF2[0];
+	WireFrame[4].Axes[1] = WF2[1];
+	WireFrame[4].Axes[2] = WF2[2];
+	WireFrame[5].Axes[0] = WF2[0];
+	WireFrame[5].Axes[1] = WF2[1];
+	WireFrame[5].Axes[2] = WF2[2];
+	
+    /* consider zero offset (position and orientation of base point with respect to world origin) */
+    double ZeroFrame[6];
+    ZeroFrame[0] = Links[0].Offset.X;
+    ZeroFrame[1] = Links[0].Offset.Y;
+    ZeroFrame[2] = Links[0].Offset.Z;
+    ZeroFrame[3] = Links[0].Rotation.X;
+    ZeroFrame[4] = Links[0].Rotation.Y;
+    ZeroFrame[5] = Links[0].Rotation.Z;
+
+	for (i=0;i<6;i++) {
+		double tmpAxes[6];
+		for (j=0;j<3;j++) { tmpAxes[j] = WireFrame[i].Axes[j]; }
+		for (j=3;j<6;j++) { tmpAxes[j] = 0; }
+		SubFrame2D(tmpAxes,ZeroFrame,WireFrame[i].Axes);
+	}
+
+    return STATUS_OK;
+
+}
+
 
 unsigned short ScaraDirect(Link_Type Links[6], double JointAxes[6], double PathAxes[6], double Axes[6])
 { //direct transformations for Scara robot
@@ -752,6 +1049,77 @@ unsigned short ScaraDirect(Link_Type Links[6], double JointAxes[6], double PathA
     return 0; //STATUS_OK;
 
 } 
+
+unsigned short ScaraWireFrame(Link_Type Links[6], double JointAxes[6], Frame_Type WireFrame[8])
+{
+
+    //simplify notation
+    double Q1 = JointAxes[0];
+    double Q2 = JointAxes[1];
+    double Q3 = JointAxes[2];
+    double Q4 = JointAxes[3];
+	
+	double c1 = cosd(Q1);
+	double s1 = sind(Q1);
+	double c2 = cosd(Q2);
+	double s2 = sind(Q2);
+	double c3 = cosd(Q3);
+	double s3 = sind(Q3);
+	double c4 = cosd(Q4);
+	double s4 = sind(Q4);
+	
+    double a1x = Links[1].Offset.X;
+    double a1z = Links[1].Offset.Z;
+    double a2x = Links[2].Offset.X;
+    double a2z = Links[2].Offset.Z;
+    double a4z = Links[4].Offset.Z;
+	
+    /* check mechanical parameters consistency */
+    if ((a1x <= 0)||(a2x <= 0)) { return ERR_TRF_MECH; }
+	
+	//origin
+	WireFrame[0].Axes[0] = 0;
+	WireFrame[0].Axes[1] = 0;
+	WireFrame[0].Axes[2] = 0;
+	
+	//end of link 1
+	WireFrame[1].Axes[0] = c1*a1x;
+	WireFrame[1].Axes[1] = s1*a1x;
+	WireFrame[1].Axes[2] = a1z;
+	
+	//end of link 2
+	double d1 = c2*a2x+a1x;
+	double d2 = s2*a2x;
+	WireFrame[2].Axes[0] = c1*d1-s1*d2;
+	WireFrame[2].Axes[1] = s1*d1+c1*d2;
+	WireFrame[2].Axes[2] = a1z+a2z;
+
+	//end of link 3
+	d1 = c2*a2x+a1x;
+	d2 = s2*a2x;
+	double d3 = Q3+Q4*a4z/360.0;
+	WireFrame[3].Axes[0] = c1*d1-s1*d2;
+	WireFrame[3].Axes[1] = s1*d1+c1*d2;
+	WireFrame[3].Axes[2] = a1z+a2z+d3;
+
+
+    /* consider zero offset (position and orientation of base point with respect to world origin) */
+    double ZeroFrame[6];
+    ZeroFrame[0] = Links[0].Offset.X;
+    ZeroFrame[1] = Links[0].Offset.Y;
+    ZeroFrame[2] = Links[0].Offset.Z;
+    ZeroFrame[3] = Links[0].Rotation.Z;
+	int i,j;
+	for (i=0;i<4;i++) {
+		double tmpAxes[6];
+		for (j=0;j<3;j++) { tmpAxes[j] = WireFrame[i].Axes[j]; }
+		for (j=3;j<6;j++) { tmpAxes[j] = 0; }
+		SubFrame2D(tmpAxes,ZeroFrame,WireFrame[i].Axes);
+	}
+
+    return STATUS_OK;
+
+}
 
 
 unsigned short ScaraInverse(Link_Type Links[6], double PathAxes[6], double JointAxes[6], double Axes[6])
@@ -859,7 +1227,6 @@ unsigned short PalletDirect(Link_Type Links[6], double JointAxes[6], double Path
     //simplify notation
     double Q1 = JointAxes[0];
     double Q2 = JointAxes[1];
-    //	double Q3 = JointAxes[2] - JointAxes[1]; // mechanical coupling
     double Q3 = JointAxes[2];
     double Q4 = JointAxes[3];
     double a1x = Links[1].Offset.X;
@@ -907,6 +1274,75 @@ unsigned short PalletDirect(Link_Type Links[6], double JointAxes[6], double Path
     return STATUS_OK;
 
 } 
+
+unsigned short PalletWireFrame(Link_Type Links[6], double JointAxes[6], Frame_Type WireFrame[8])
+{
+
+    //simplify notation
+    double Q1 = JointAxes[0];
+    double Q2 = JointAxes[1];
+    double Q3 = JointAxes[2];
+    double Q4 = JointAxes[3];
+	
+	double c1 = cosd(Q1);
+	double s1 = sind(Q1);
+	double c2 = cosd(Q2);
+	double s2 = sind(Q2);
+	double c3 = cosd(Q3);
+	double s3 = sind(Q3);
+	
+    double a1x = Links[1].Offset.X;
+    double a1z = Links[1].Offset.Z;
+    double a2z = Links[2].Offset.Z;
+    double a3x = Links[3].Offset.X;
+    double a4x = Links[4].Offset.X;
+    double a4z = Links[4].Offset.Z;
+
+    /* check mechanical parameters consistency */
+    if ((a1z < 0)||(a2z <= 0)||(a3x <= 0)||(a4x < 0)||(a4z < 0))
+    {
+        return ERR_TRF_MECH;
+    }
+
+	//origin
+	WireFrame[0].Axes[0] = 0;
+	WireFrame[0].Axes[1] = 0;
+	WireFrame[0].Axes[2] = 0;
+	
+	//end of link 1
+	WireFrame[1].Axes[0] = c1*a1x;
+	WireFrame[1].Axes[1] = s1*a1x;
+	WireFrame[1].Axes[2] = a1z;
+	
+	//end of link 2
+	WireFrame[2].Axes[0] = c1*(s2*a2z+a1x);
+	WireFrame[2].Axes[1] = s1*(s2*a2z+a1x);
+	WireFrame[2].Axes[2] = a1z+c2*a2z;
+
+	//end of link 3
+	double d1 = c2*c3*a3x+s2*(-s3*a3x+a2z)+a1x;
+	double d2 = -s2*c3*a3x+c2*(-s3*a3x+a2z)+a1z;
+	WireFrame[3].Axes[0] = c1*d1;
+	WireFrame[3].Axes[1] = s1*d1;
+	WireFrame[3].Axes[2] = d2;
+
+    /* consider zero offset (position and orientation of base point with respect to world origin) */
+    double ZeroFrame[6];
+    ZeroFrame[0] = Links[0].Offset.X;
+    ZeroFrame[1] = Links[0].Offset.Y;
+    ZeroFrame[2] = Links[0].Offset.Z;
+    ZeroFrame[3] = Links[0].Rotation.Z;
+	int i,j;
+	for (i=0;i<4;i++) {
+		double tmpAxes[6];
+		for (j=0;j<3;j++) { tmpAxes[j] = WireFrame[i].Axes[j]; }
+		for (j=3;j<6;j++) { tmpAxes[j] = 0; }
+		SubFrame2D(tmpAxes,ZeroFrame,WireFrame[i].Axes);
+	}
+
+    return STATUS_OK;
+
+}
 
 
 unsigned short PalletInverse(Link_Type Links[6], double PathAxes[6], double JointAxes[6], double Axes[6])
@@ -1112,6 +1548,70 @@ unsigned short DeltaDirect(Link_Type Links[6], double JointAxes[6], double PathA
     }
 
 } 
+
+unsigned short DeltaWireFrame(Link_Type Links[6], double JointAxes[6], Frame_Type WireFrame[8])
+{
+
+    //simplify notation
+    double Q1 = JointAxes[0];
+    double Q2 = JointAxes[1];
+    double Q3 = JointAxes[2];
+    double Q4 = JointAxes[3];
+		
+	double c1 = cosd(Q1);
+	double s1 = sind(Q1);
+	double c2 = cosd(Q2);
+	double s2 = sind(Q2);
+	double c3 = cosd(Q3);
+	double s3 = sind(Q3);
+	double c120 = cosd(120);
+	double s120 = sind(120);
+	
+    double a1x = Links[1].Offset.X;	//radius top
+    double a1z = Links[1].Offset.Z;	//arm top
+
+    /* check mechanical parameters consistency */
+    if ((a1x <= 0)||(a1z <= 0)) { return ERR_TRF_MECH; }
+
+	
+	//origin
+	WireFrame[0].Axes[0] = 0;
+	WireFrame[0].Axes[1] = 0;
+	WireFrame[0].Axes[2] = 0;
+	
+	//end of link 1
+	WireFrame[1].Axes[0] = a1x+a1z*c1;
+	WireFrame[1].Axes[1] = 0;
+	WireFrame[1].Axes[2] = -a1z*s1;
+	
+	//end of link 2
+	WireFrame[2].Axes[0] = c120*(a1x+a1z*c2);
+	WireFrame[2].Axes[1] = s120*(a1x+a1z*c2);
+	WireFrame[2].Axes[2] = -a1z*s2;
+
+	//end of link 3
+	WireFrame[3].Axes[0] = c120*(a1x+a1z*c3);
+	WireFrame[3].Axes[1] = -s120*(a1x+a1z*c3);
+	WireFrame[3].Axes[2] = -a1z*s3;
+
+    /* consider zero offset (position and orientation of base point with respect to world origin) */
+    double ZeroFrame[6];
+    ZeroFrame[0] = Links[0].Offset.X;
+    ZeroFrame[1] = Links[0].Offset.Y;
+    ZeroFrame[2] = Links[0].Offset.Z;
+    ZeroFrame[3] = Links[0].Rotation.Z;
+	int i,j;
+	for (i=0;i<4;i++) {
+		double tmpAxes[6];
+		for (j=0;j<3;j++) { tmpAxes[j] = WireFrame[i].Axes[j]; }
+		for (j=3;j<6;j++) { tmpAxes[j] = 0; }
+		SubFrame2D(tmpAxes,ZeroFrame,WireFrame[i].Axes);
+	}
+
+    return STATUS_OK;
+
+}
+
 
 static int delta_calcAngleYZ(double a1y, double a1z, double a2y, double a2z, double X, double Y, double Z, double *theta)
 {

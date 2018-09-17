@@ -10,6 +10,16 @@
 #define EDGE_END 0
 #define EDGE_START 1
 
+/* capsule datatype */
+typedef struct Capsule_Type
+{	
+	double P0[3];
+	double P1[3];
+	double radius;
+} Capsule_Type;
+
+
+
 /* Declaration of common functions used for path planning purposes: path lengths, geometric calculations, vector calculus... */
 
 double LineLength(double P1[6],double P2[6], int Size);
@@ -36,4 +46,7 @@ unsigned short PointInBox(double P[6],double B1[6],double B2[6]);
 unsigned short WorkspaceMonitor(unsigned char MovementType, Path_Type* Path, double Tool[6], Robot_Parameter_Workspace_Type Workspace[MAX_ZONE], unsigned short AxesNum, Mech_Type* Mechanics);
 unsigned short RoundEdgePoints(MotionPackage_Type* Movement, MotionPackage_Type* MovementPrev, unsigned short AxesNum, Mech_Type* Mechanics);
 double PTPLength(Path_Type* Path, unsigned short AxesNum, Mech_Type* Mechanics);
+double PointToCapsule(Capsule_Type* Capsule, double Q[3]);
+double CapsuleToCapsule(Capsule_Type* Capsule1, Capsule_Type* Capsule2);
+
 #endif
