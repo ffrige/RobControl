@@ -39,9 +39,14 @@ unsigned short Wireframe(struct Mech_Type* Mechanics, double JointAxes[6], Frame
             break;
 			}
            
-        case ARM: {
-			Status = ArmWireFrame(Mechanics->Links, JointAxes, WireframePoints);
-			break;
+		case ARM: {
+				Status = ArmWireFrame(Mechanics->Links, JointAxes, WireframePoints);
+				break;
+			}
+
+		case UR: {
+				Status = URWireFrame(Mechanics->Links, JointAxes, WireframePoints);
+				break;
 			}
 
 		case USER: {
@@ -103,8 +108,12 @@ unsigned short Transformations(struct Mech_Type* Mechanics, unsigned char Mode, 
                 Status = RTCP_Direct(Mechanics->Links,JointAxes,PathAxes,Axes);
                 break;
             
-            case ARM:
+			case ARM:
 				Status = ArmDirect(Mechanics->Links,JointAxes,PathAxes,Axes);
+				break;
+
+			case UR:
+				Status = URDirect(Mechanics->Links,JointAxes,PathAxes,Axes);
 				break;
 
 			case USER:
@@ -180,6 +189,10 @@ unsigned short Transformations(struct Mech_Type* Mechanics, unsigned char Mode, 
             
 			case ARM:
 				Status = ArmInverse(Mechanics->Links,PathAxes,JointAxes,Axes);
+				break;
+
+			case UR:
+				Status = URInverse(Mechanics->Links,PathAxes,JointAxes,Axes);
 				break;
 
 			case USER:

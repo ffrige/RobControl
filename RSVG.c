@@ -247,7 +247,7 @@ void RSVG(struct RSVG_Type* inst)
 			    inst->beginSpeed = inst->Speed * inst->RedFactor / override; //added RedFactor here so that movements that are slowed down already stop quickly
             else
                 inst->beginSpeed = 0;
-			inst->beginAcc = fabs(inst->Acceleration);
+			inst->beginAcc = fabs(inst->Acceleration); //TODO - shouldn't the acceleration be reduced by the override as well?!?
 			inst->elapsedTime = 0;
 			
 			

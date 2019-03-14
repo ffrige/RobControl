@@ -15,6 +15,11 @@ unsigned short ArmDirect(Link_Type Links[6], double JointAxes[6], double PathAxe
 unsigned short ArmInverse(Link_Type Links[6], double PathAxes[6], double JointAxes[6], double Axes[6]);
 unsigned short ArmWireFrame(Link_Type Links[6], double JointAxes[6], Frame_Type WireFrame[8]);
 
+//UR Robot
+unsigned short URDirect(Link_Type Links[6], double JointAxes[6], double PathAxes[6], double Axes[6]);
+unsigned short URInverse(Link_Type Links[6], double PathAxes[6], double JointAxes[6], double Axes[6]);
+unsigned short URWireFrame(Link_Type Links[6], double JointAxes[6], Frame_Type WireFrame[8]);
+
 //5-Axis RTCP
 unsigned short RTCP_Direct(Link_Type Links[6], double JointAxes[6], double PathAxes[6], double Axes[6]);
 unsigned short RTCP_Inverse(Link_Type Links[6], double PathAxes[6], double JointAxes[6], double Axes[6]);

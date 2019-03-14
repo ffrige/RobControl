@@ -17,10 +17,6 @@
 #define min(a,b) ( (a<b)?a:b )
 #define max(a,b) ( (a>b)?a:b )
 
-//read license info function
-//for LINUX only
-int mpar_getHardwareInfo(void* pInfoData, int* pSize);
-
 unsigned short RobotControl(unsigned long Robots, unsigned char RobotsNumber)
 {
     Robot_Type *gRobot[RobotsNumber];
@@ -55,20 +51,6 @@ unsigned short RobotControl(unsigned long Robots, unsigned char RobotsNumber)
         
         gRobot[i] = (Robot_Type*) (Robots + sizeof(Robot_Type)*i);
         
-				/*
-        //LICENSE CHECK for ARM
-        unsigned long* p1 = 0x5e0;
-        unsigned long* p2 = 0x5e4;
-        unsigned long License = (~(*p1)^(*p2))^(gRobot[i]->Parameters.License);
-        if (License) return ERR_ROBOT_LICENSE;
-				*/
-        //LICENSE CHECK for LINUX
-				unsigned long lic[16];
-				int infoSize = sizeof(lic);
-				int Ret = mpar_getHardwareInfo(&lic, &infoSize);
-        unsigned long License = (~(lic[2])^(lic[3]))^(gRobot[i]->Parameters.License);
-        if (License) return ERR_ROBOT_LICENSE;
-
         /* prevent user from changing old monitor values (except for M-functions, R, DI_ and TrackSynch) */
         memcpy(&OldMonitor[i].M,&gRobot[i]->Monitor.M,sizeof(OldMonitor[i].M));
         memcpy(&OldMonitor[i].R_,&gRobot[i]->Monitor.R_,sizeof(OldMonitor[i].R_));
@@ -84,9 +66,6 @@ unsigned short RobotControl(unsigned long Robots, unsigned char RobotsNumber)
             gRobot[i]->Monitor.ErrorLine = 0;
         }
 		
-        /* increase evaluation time -> the more robots the faster it runs off! */
-        EvaluationTime += ((unsigned long) (gRobot[i]->Parameters.CycleTime * 1000.0));
-
         /* overwrite Tool[0] and Frame[0] so that omitting them in the programmed block is equivalent to working with no tool and no frame */
         memset(&gRobot[i]->Parameters.Tool[0],0,sizeof(gRobot[i]->Parameters.Tool[0]));
         memset(&gRobot[i]->Parameters.Frame[0],0,sizeof(gRobot[i]->Parameters.Frame[0]));
@@ -173,7 +152,7 @@ unsigned short RobotControl(unsigned long Robots, unsigned char RobotsNumber)
                 gRobot[i]->Monitor.ActiveError = ERR_TRF_AXESNUM;
                 gRobot[i]->Monitor.ErrorLine = 0;				
             }
-        } else { //all other cases - protection for future additions
+        } else { //all other cases: ARM - UR - protection for future additions
             gRobot[i]->Monitor.AxesNum = 6;
         }
 		

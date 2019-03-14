@@ -3,8 +3,482 @@
 #include "trig.h"
 #include "RobControl.h"
 #include "Frame.h"
+#include "PathPlanner.h"
 #include "Misc.h"
 #include "constants.h"
+
+unsigned short URDirect(Link_Type Links[6], double JointAxes[6], double PathAxes[6], double Axes[6])
+{ //direct transformations for UR 6ax robot
+
+	//simplify notation
+	double Q1 = JointAxes[0];
+	double Q2 = JointAxes[1];
+	double Q3 = JointAxes[2];
+	double Q4 = JointAxes[3];
+	double Q5 = JointAxes[4];
+	double Q6 = JointAxes[5];
+
+	double c1 = cosd(Q1);
+	double s1 = sind(Q1);
+	double c2 = cosd(Q2);
+	double s2 = sind(Q2);
+	double c5 = cosd(Q5);
+	double s5 = sind(Q5);
+	double c6 = cosd(Q6);
+	double s6 = sind(Q6);
+	double c23 = cosd(Q2 + Q3);
+	double s23 = sind(Q2 + Q3);
+	double c234 = cosd(Q2 + Q3 + Q4);
+	double s234 = sind(Q2 + Q3 + Q4);
+
+	//double a1x = Links[1].Offset.X;
+	double a1y = Links[1].Offset.Y;
+	double a1z = Links[1].Offset.Z;
+	double a2x = Links[2].Offset.X;
+	double a2y = Links[2].Offset.Y;
+	//double a2z = Links[2].Offset.Z;
+	double a3x = Links[3].Offset.X;
+	double a3y = Links[3].Offset.Y;
+	//double a3z = Links[3].Offset.Z;
+	double a4z = Links[4].Offset.Z;
+	double a5y = Links[5].Offset.Y;
+
+	/* base offset from world frame */
+	double ZeroFrame[6];
+	ZeroFrame[0] = Links[0].Offset.X;
+	ZeroFrame[1] = Links[0].Offset.Y;
+	ZeroFrame[2] = Links[0].Offset.Z;
+	ZeroFrame[3] = Links[0].Rotation.X;
+	ZeroFrame[4] = Links[0].Rotation.Y;
+	ZeroFrame[5] = Links[0].Rotation.Z;
+
+	//temporary axes values
+	double tmpAxes[6];
+
+	/* check mechanical parameters consistency */
+	if ((a1y <= 0) || (a1z <= 0) || (a2x <= 0) || (a2y <= 0) || (a3x <= 0) || (a3y <= 0) || (a4z <= 0) || (a5y <= 0)) {
+		return ERR_TRF_MECH;
+	}
+
+	/* invert negative parameters */
+	a2y = -a2y;
+	a4z = -a4z;
+
+	/* X axis */
+	tmpAxes[0] = -a1y*s1 + a2x*c1*c2 - a2y*s1 + a3x*c1*c23 - a3y*s1 + a4z*c1*s234 - a5y*(s1*c5+c1*s5*c234);
+
+	/* Y axis */
+	tmpAxes[1] = a1y*c1 + a2x*s1*c2 + a2y*c1 + a3x*s1*c23 + a3y*c1 + a4z*s1*s234 + a5y*(c1*c5-s1*s5*c234);
+
+	/* Z axis */
+	tmpAxes[2] = a1z - a2x*s2 - a3x*s23 + a4z*c234 + a5y*s5*s234;
+
+
+	/* compose R_total from all joints rotations */
+	double R_total[3][3];
+
+	R_total[0][0] = -(s1*s5 - c1*c5*c234)*c6 - s6*s234*c1;
+	R_total[0][1] = -s1*c5 - s5*c1*c234;
+	R_total[0][2] = -(s1*s5 - c1*c5*c234)*s6 + s234*c1*c6;
+
+	R_total[1][0] = (s1*c5*c234 + s5*c1)*c6 - s1*s6*s234;
+	R_total[1][1] = -s1*s5*c234 + c1*c5;
+	R_total[1][2] = (s1*c5*c234 + s5*c1)*s6 + s1*s234*c6;
+
+	R_total[2][0] = -s6*c234 - s234*c5*c6;
+	R_total[2][1] = s5*s234;
+	R_total[2][2] = -s6*s234*c5 + c6*c234;
+
+	/* A,B,C axis */
+	double A, B, C;
+	DecomposeMatrix(R_total, PathAxes[3], PathAxes[4], PathAxes[5], &A, &B, &C);
+	tmpAxes[3] = A;
+	tmpAxes[4] = B;
+	tmpAxes[5] = C;
+
+	/* consider zero offset (position and orientation of base point with respect to world origin) */
+	SubFrame3D(tmpAxes, ZeroFrame, PathAxes[3], PathAxes[4], PathAxes[5], Axes);
+
+	int i = 0;
+	for (i = 0; i < 6; i++)
+	{
+		Axes[i] = RoundToEpsilon(Axes[i]);
+	}
+
+	return STATUS_OK;
+
+}
+
+unsigned short URWireFrame(Link_Type Links[6], double JointAxes[6], Frame_Type WireFrame[8])
+{ //calculate positions of individual links
+
+	//simplify notation
+	double Q1 = JointAxes[0];
+	double Q2 = JointAxes[1];
+	double Q3 = JointAxes[2];
+	double Q4 = JointAxes[3];
+	double Q5 = JointAxes[4];
+	double Q6 = JointAxes[5];
+
+	double c1 = cosd(Q1);
+	double s1 = sind(Q1);
+	double c2 = cosd(Q2);
+	double s2 = sind(Q2);
+	double c5 = cosd(Q5);
+	double s5 = sind(Q5);
+	double c6 = cosd(Q6);
+	double s6 = sind(Q6);
+	double c23 = cosd(Q2 + Q3);
+	double s23 = sind(Q2 + Q3);
+	double c234 = cosd(Q2 + Q3 + Q4);
+	double s234 = sind(Q2 + Q3 + Q4);
+
+	//double a1x = Links[1].Offset.X;
+	double a1y = Links[1].Offset.Y;
+	double a1z = Links[1].Offset.Z;
+	double a2x = Links[2].Offset.X;
+	double a2y = Links[2].Offset.Y;
+	//double a2z = Links[2].Offset.Z;
+	double a3x = Links[3].Offset.X;
+	double a3y = Links[3].Offset.Y;
+	//double a3z = Links[3].Offset.Z;
+	double a4z = Links[4].Offset.Z;
+	double a5y = Links[5].Offset.Y;
+
+	/* check mechanical parameters consistency */
+	if ((a1y <= 0) || (a1z <= 0) || (a2x <= 0) || (a2y <= 0) || (a3x <= 0) || (a3y <= 0) || (a4z <= 0) || (a5y <= 0)) {
+		return ERR_TRF_MECH;
+	}
+
+	/* invert negative parameters */
+	a2y = -a2y;
+	a4z = -a4z;
+
+	//origin
+	WireFrame[0].Axes[0] = 0;
+	WireFrame[0].Axes[1] = 0;
+	WireFrame[0].Axes[2] = 0;
+
+	//end of link 1
+	WireFrame[1].Axes[0] = -a1y*s1;
+	WireFrame[1].Axes[1] = a1y*c1;
+	WireFrame[1].Axes[2] = a1z;
+
+	//end of link 2
+	WireFrame[2].Axes[0] = WireFrame[1].Axes[0] + a2x*c1*c2 - a2y*s1;
+	WireFrame[2].Axes[1] = WireFrame[1].Axes[1] + a2x*s1*c2 + a2y*c1;
+	WireFrame[2].Axes[2] = WireFrame[1].Axes[2] - a2x*s2;
+
+	//end of link 3
+	WireFrame[3].Axes[0] = WireFrame[2].Axes[0] + a3x*c1*c23 - a3y*s1;
+	WireFrame[3].Axes[1] = WireFrame[2].Axes[1] + a3x*s1*c23 + a3y*c1;
+	WireFrame[3].Axes[2] = WireFrame[2].Axes[2] - a3x*s23;
+
+	//end of link 4
+	WireFrame[4].Axes[0] = WireFrame[3].Axes[0] + a4z*c1*s234;
+	WireFrame[4].Axes[1] = WireFrame[3].Axes[1] + a4z*s1*s234;
+	WireFrame[4].Axes[2] = WireFrame[3].Axes[2] + a4z*c234;
+
+	//end of link 5
+	WireFrame[5].Axes[0] = WireFrame[4].Axes[0] - a5y*(s1*c5+ c1*s5*c234);
+	WireFrame[5].Axes[1] = WireFrame[4].Axes[1] + a5y*(c1*c5 -s1*s5*c234);
+	WireFrame[5].Axes[2] = WireFrame[4].Axes[2] + a5y*s5*s234;
+
+	/* consider zero offset (position and orientation of base point with respect to world origin) */
+	double ZeroFrame[6];
+	ZeroFrame[0] = Links[0].Offset.X;
+	ZeroFrame[1] = Links[0].Offset.Y;
+	ZeroFrame[2] = Links[0].Offset.Z;
+	ZeroFrame[3] = Links[0].Rotation.X;
+	ZeroFrame[4] = Links[0].Rotation.Y;
+	ZeroFrame[5] = Links[0].Rotation.Z;
+	int i, j;
+	for (i = 0; i < 6; i++) {
+		double tmpAxes[6];
+		for (j = 0; j < 3; j++) { tmpAxes[j] = WireFrame[i].Axes[j]; }
+		for (j = 3; j < 6; j++) { tmpAxes[j] = 0; }
+		SubFrame3D(tmpAxes, ZeroFrame, 0, 0, 0, WireFrame[i].Axes);
+	}
+
+	return STATUS_OK;
+
+}
+
+unsigned short URInverse(Link_Type Links[6], double PathAxes[6], double JointAxes[6], double Axes[6])
+{ //inverse transformations for 6ax UR robot
+
+	/* base offset from world frame */
+	double ZeroFrame[6];
+	ZeroFrame[0] = Links[0].Offset.X;
+	ZeroFrame[1] = Links[0].Offset.Y;
+	ZeroFrame[2] = Links[0].Offset.Z;
+	ZeroFrame[3] = Links[0].Rotation.X;
+	ZeroFrame[4] = Links[0].Rotation.Y;
+	ZeroFrame[5] = Links[0].Rotation.Z;
+
+	//temporary axes values
+	double tmpAxes[6], P2[6], P4[6], P5[6], P42[6];
+	int i,j,k;
+	double solutions[8][6]; //8 possible solutions for the 6 axes
+	int invalidSolutions[8];
+	for (i=0;i<8;i++) {invalidSolutions[i] = 0;}
+
+	/* consider zero offset (position and orientation of base point with respect to world origin) */
+	AddFrame3D(PathAxes, ZeroFrame, PathAxes[3], PathAxes[4], PathAxes[5], tmpAxes);
+
+	//simplify notation
+	double X = tmpAxes[0];
+	double Y = tmpAxes[1];
+	double Z = tmpAxes[2];
+	double A = tmpAxes[3];
+	double B = tmpAxes[4];
+	double C = tmpAxes[5];
+
+	//double a1x = Links[1].Offset.X;
+	double a1y = Links[1].Offset.Y;
+	double a1z = Links[1].Offset.Z;
+	double a2x = Links[2].Offset.X;
+	double a2y = Links[2].Offset.Y;
+	//double a2z = Links[2].Offset.Z;
+	double a3x = Links[3].Offset.X;
+	double a3y = Links[3].Offset.Y;
+	//double a3z = Links[3].Offset.Z;
+	double a4z = Links[4].Offset.Z;
+	double a5y = Links[5].Offset.Y;
+
+	/* check mechanical parameters consistency */
+	if ((a1y <= 0) || (a1z <= 0) || (a2x <= 0) || (a2y <= 0) || (a3x <= 0) || (a3y <= 0) || (a4z <= 0) || (a5y <= 0)) {
+		return ERR_TRF_MECH;
+	}
+
+	/* invert negative parameters */
+	a2y = -a2y;
+	a4z = -a4z;
+	double a6y = a1y + a2y + a3y;
+
+	/* compose rotation matrix  */
+	double R_total[3][3];
+	ComposeMatrix(R_total, A, B, C);
+
+	double nx = R_total[0][0];
+	double ny = R_total[1][0];
+	double nz = R_total[2][0];
+	double ox = R_total[0][1];
+	double oy = R_total[1][1];
+	double oz = R_total[2][1];
+	double ax = R_total[0][2];
+	double ay = R_total[1][2];
+	double az = R_total[2][2];
+
+	/* calculate P5 from mounting point MP */
+	P5[0] = X - a5y * ox;
+	P5[1] = Y - a5y * oy;
+	P5[2] = Z - a5y * oz;
+
+	/* calculate Q1 */
+	double rho = sqrt(P5[0] * P5[0] + P5[1] * P5[1]);
+	// check for singularity rho < a6y
+	if (rho <= fabs(a6y) + TRF_EPSILON)
+	{
+		return ERR_TRF_WORKSPACE;
+	}
+	else
+	{
+		double sinAlpha = a6y / rho;
+		double Q1a = atan2d(P5[1], P5[0]) - atan2d(sinAlpha, sqrt(1 - sinAlpha * sinAlpha));
+		double Q1b = atan2d(P5[1], P5[0]) + atan2d(sinAlpha, sqrt(1 - sinAlpha * sinAlpha)) + 180;
+		Q1a = Modulo2PI(Q1a, JointAxes[0]);
+		Q1b = Modulo2PI(Q1b, JointAxes[0]);
+
+		//choose solution closest to current value of Q1
+		if (fabs(Q1a-JointAxes[0]) < fabs(Q1b-JointAxes[0])) { Axes[0] = Q1a; }
+		else { Axes[0] = Q1b; }
+		
+		solutions[0][0] = Axes[0];
+		solutions[1][0] = Axes[0];
+
+	}
+
+
+	/* calculate Q5 */
+	
+	//double cosAlpha = (cosd(Axes[0])*Y - sind(Axes[0])*X - a6y) / a5y; //geometrical solution
+	double cosAlpha = -sind(Axes[0])*ox + cosd(Axes[0])*oy; //algebraic solution (more efficient)
+	//fix numerical errors
+	if (cosAlpha > 1 + TRF_EPSILON || cosAlpha <-1 - TRF_EPSILON) {
+		return ERR_TRF_WORKSPACE;
+	}
+	else if (cosAlpha > 1) {cosAlpha = 1;}
+	else if (cosAlpha < -1) {cosAlpha = -1;}
+	double Q5a = atan2d(sqrt(1 - cosAlpha * cosAlpha),cosAlpha);
+	double Q5b = -atan2d(sqrt(1 - cosAlpha * cosAlpha),cosAlpha);
+	Q5a = Modulo2PI(Q5a, JointAxes[4]);
+	Q5b = Modulo2PI(Q5b, JointAxes[4]);
+
+	solutions[0][4] = Q5a;
+	solutions[1][4] = Q5b;
+
+	
+
+	
+	/* calculate Q6 */
+	for (i=0;i<2;i++) {
+		
+		Axes[0] = solutions[i][0];
+		Axes[4] = solutions[i][4];
+		
+		//check for singularities
+		if (fabs(sind(Axes[4]))<TRF_EPSILON)
+		{
+			solutions[i][5] = JointAxes[5];
+		}
+		else {
+			double sin_Q6 = (-sind(Axes[0])*ax + cosd(Axes[0])*ay) / sind(Axes[4]);
+			double cos_Q6 = (-sind(Axes[0])*nx + cosd(Axes[0])*ny) / sind(Axes[4]);
+			Axes[5] = atan2d(sin_Q6, cos_Q6);
+			//adjust positions of Q6 with +-2PI to bring it closer to desired value
+			Axes[5] = Modulo2PI(Axes[5],JointAxes[5]);
+			solutions[i][5] = Axes[5];
+		}
+	}
+
+
+	/* calculate Q2,Q3,Q4 */
+	
+	for (i=0;i<2;i++) {
+		
+		Axes[0] = solutions[i][0];
+		Axes[4] = solutions[i][4];
+		Axes[5] = solutions[i][5];
+				
+		/* calculate P4 from P5 -> P4 = P5 - a4z*z4*/
+		P4[0] = P5[0] - a4z * (-sind(Axes[5])*nx + cosd(Axes[5])*ax);
+		P4[1] = P5[1] - a4z * (-sind(Axes[5])*ny + cosd(Axes[5])*ay);
+		P4[2] = P5[2] - a4z * (-sind(Axes[5])*nz + cosd(Axes[5])*az);
+
+		/* calculate P2 */
+		double s1 = sind(Axes[0]);
+		double c1 = cosd(Axes[0]);
+		P2[0] = -s1 * a1y;
+		P2[1] = c1 * a1y;
+		P2[2] = a1z;
+
+		/* calculate Q2, Q3 from P2, P4 */
+		P42[0] = P4[0] - P2[0];
+		P42[1] = P4[1] - P2[1];
+		P42[2] = P4[2] - P2[2];
+		double a7y = a2y + a3y;
+		double length = sqrt(P42[0] * P42[0] + P42[1] * P42[1] - a7y * a7y);
+		rho = sqrt(length*length + P42[2] * P42[2]);
+	
+		//check for workspace violations
+		if ( (rho > (a2x + a3x + TRF_EPSILON))||(rho < (fabs(a2x-a3x) - TRF_EPSILON)))
+		{
+			invalidSolutions[i] = 1;
+			continue;
+		}
+		else if (rho > (a2x + a3x)) //adjust impreciseness
+		{
+			rho = (a2x + a3x);
+		}
+		else if (rho < fabs(a2x-a3x)) //adjust impreciseness
+		{
+			rho = fabs(a2x-a3x);
+		}
+	
+		//flip sign of length if Q1 was chosen 180 deg away from atan(Y,X)
+		if (fabs(Modulo2PI(Axes[0] - atan2d(P5[1], P5[0]),0))>90) //it should be ok to omit a6y here, because it won't exceed 90degs
+		{
+			length = -length;
+		}
+
+		double alpha = atan2d(P42[2], length);
+		double cos_beta = (rho*rho + a2x*a2x - a3x*a3x)/(2*rho*a2x);
+		double cos_gamma = (a2x * a2x + a3x * a3x - rho * rho) / (2 * a2x*a3x);
+		double beta = atan2d(sqrt(1 - cos_beta * cos_beta), cos_beta);
+		double gamma = atan2d(sqrt(1 - cos_gamma * cos_gamma), cos_gamma);
+		double Q2a = -alpha + beta;
+		double Q2b = -alpha - beta;
+		double Q3 = 180 - gamma;
+		
+		//keep same concave/convex pose of Q3
+		if (sind(JointAxes[2])<0)
+		{
+			Axes[1] = Q2a;
+			Axes[2] = -Q3;
+		}
+		else
+		{ 
+			Axes[1] = Q2b;
+			Axes[2] = Q3;
+		}
+
+		/* calculate Q4 from Q2,Q3,Q4abs */
+		//Q4abs is the angle difference between x4 and x1
+		double c5c6 = cosd(Axes[4])*cosd(Axes[5]);
+		double c5s6 = cosd(Axes[4])*sind(Axes[5]);
+		double s5 = sind(Axes[4]);
+		double x3[3], x4[3], n[3], x1[3];
+		//x4 is the x direction at P4
+		x4[0] = c5c6 * nx - s5 * ox + c5s6 * ax;
+		x4[1] = c5c6 * ny - s5 * oy + c5s6 * ay;
+		x4[2] = c5c6 * nz - s5 * oz + c5s6 * az;
+
+		//x1 is the x direction at P1/P2 (parallel to ground)
+		x1[0] = c1;
+		x1[1] = s1;
+		x1[2] = 0;
+		
+		//n is the y direction at P1/P2 (normal to the x1,x4 plane)
+		n[0] = s1;
+		n[1] = -c1;
+		n[2] = 0;
+
+		Normalize(x1);
+		Normalize(x4);
+		Normalize(n);
+		double dot = DotProduct(x1,x4);		
+		double det = x1[0]*x4[1]*n[2] + x1[1]*x4[2]*n[0] + x1[2]*x4[0]*n[1] - x1[2]*x4[1]*n[0] - x1[1]*x4[0]*n[2] - x1[0]*x4[2]*n[1];
+
+		Axes[3] = - atan2d(det,dot) - Axes[1] - Axes[2];
+		Axes[3] = Modulo2PI(Axes[3],JointAxes[3]);
+
+		solutions[i][1] = Axes[1];
+		solutions[i][2] = Axes[2];
+		solutions[i][3] = Axes[3];
+		
+	}	
+		
+	//choose closest solution to current pose
+	double maxerror = 1e+10;
+	int bestsol = 10;
+	for(i=0;i<2;i++) {
+		if (invalidSolutions[i]) {continue;}
+		double error = 0;
+		for(j=0;j<6;j++) {
+			error += ((solutions[i][j]-JointAxes[j])*(solutions[i][j]-JointAxes[j]));
+		}
+		if (error<maxerror) {
+			maxerror = error;
+			bestsol = i;
+		}
+	}
+	
+	if (bestsol == 10) {return ERR_TRF_WORKSPACE;}
+	
+	for(j=0;j<6;j++) {	
+		Axes[j] = solutions[bestsol][j];
+	}
+
+	for (i = 0; i < 6; i++)
+	{
+		Axes[i] = RoundToEpsilon(Axes[i]);
+	}
+
+	return STATUS_OK;
+
+}
+
 
 unsigned short ArmDirect(Link_Type Links[6], double JointAxes[6], double PathAxes[6], double Axes[6])
 { //direct transformations for 6ax robot

@@ -11,7 +11,6 @@ typedef struct Quat_Type
 	double w,x,y,z;
 } Quat_Type;
 
-
 /* Declaration of common functions used for frames operations: translations, rotations... */
 
 unsigned short ComposeMatrix(double RM[3][3], double A, double B, double C);

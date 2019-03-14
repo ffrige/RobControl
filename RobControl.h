@@ -122,6 +122,7 @@
 #define MAX_MFUNC_INLINE 10
 #define TRF_POSE_NEGATIVE 8
 #define MAX_ROBOTS 8
+#define UR 8
 #define ARM 6
 #define RTCP 5
 #define PALLETIZER 4
