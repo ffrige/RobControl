@@ -4,6 +4,7 @@
 /* Declaration of global constants, datatypes and functions for the RobControl library */ 
 
 #define MAX_PRG_SIZE 10000
+#define ERR_SINGULARITY 1280
 #define ERR_COLL_INTER 1271
 #define ERR_COLL_SELF 1270
 #define ERR_OPTMOT 1260
@@ -317,6 +318,8 @@ typedef struct Robot_Parameter_Type
 	double FilterTime;
 	double MaxTransitionAngle;
 	unsigned short SingleStep;
+	unsigned short Simulation;
+	unsigned short SingularityWarning;
 	unsigned long License;
 } Robot_Parameter_Type;
 

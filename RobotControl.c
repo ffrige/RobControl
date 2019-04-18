@@ -34,7 +34,7 @@ unsigned short RobotControl(unsigned long Robots, unsigned char RobotsNumber)
     unsigned short tmpViolate;
 	
     char line[MAX_BLOCK_SIZE];	
-	
+
     if (!CheckConstDone) {
         CheckConstDone = CheckConst();
         return ERR_CHECKSUM;
@@ -50,13 +50,13 @@ unsigned short RobotControl(unsigned long Robots, unsigned char RobotsNumber)
     for(i=0;i<RobotsNumber;i++) {
         
         gRobot[i] = (Robot_Type*) (Robots + sizeof(Robot_Type)*i);
-        
+
         /* prevent user from changing old monitor values (except for M-functions, R, DI_ and TrackSynch) */
         memcpy(&OldMonitor[i].M,&gRobot[i]->Monitor.M,sizeof(OldMonitor[i].M));
         memcpy(&OldMonitor[i].R_,&gRobot[i]->Monitor.R_,sizeof(OldMonitor[i].R_));
         memcpy(&OldMonitor[i].DI_,&gRobot[i]->Monitor.DI_,sizeof(OldMonitor[i].DI_));
         OldMonitor[i].TrackSynch = gRobot[i]->Monitor.TrackSynch;
-        if (gRobot[i]->Monitor.State == STANDSTILL_STATE) OldMonitor[i].Tool = gRobot[i]->Monitor.Tool;
+		if (gRobot[i]->Monitor.State == STANDSTILL_STATE) { OldMonitor[i].Tool = gRobot[i]->Monitor.Tool; }
         memcpy(&gRobot[i]->Monitor,&OldMonitor[i],sizeof(gRobot[i]->Monitor));
 		
         /* monitor cycletime */
@@ -247,12 +247,44 @@ unsigned short RobotControl(unsigned long Robots, unsigned char RobotsNumber)
         if (gRobot[i]->Parameters.FilterTime < 0) gRobot[i]->Parameters.FilterTime = 0;
         if (gRobot[i]->Parameters.FilterTime > 0.5) gRobot[i]->Parameters.FilterTime = 0.5;
 
-        //prevent user from activating single step mode while movement is active
-        if ((gRobot[i]->Monitor.Moving)&&(OldSingleStep[i] == 0)) {
-            gRobot[i]->Parameters.SingleStep = OldSingleStep[i];
-        } else {
-            OldSingleStep[i] = gRobot[i]->Parameters.SingleStep;
-        }		
+		//prevent user from activating single step mode while movement is active
+		if ((gRobot[i]->Monitor.Moving)&&(OldSingleStep[i] == 0)) {
+			gRobot[i]->Parameters.SingleStep = OldSingleStep[i];
+		} else {
+			OldSingleStep[i] = gRobot[i]->Parameters.SingleStep;
+		}		
+		
+		//simulation mode can only be toggled at standstill
+		if (gRobot[i]->Monitor.Moving) {
+			gRobot[i]->Parameters.Simulation = OldSimulation[i];
+		} else {
+			//re-aling axes with real values after switching off simulation mode
+			if (!gRobot[i]->Parameters.Simulation && OldSimulation[i]) {
+				//scale axes units
+				for (k=0;k<gRobot[i]->Monitor.AxesNum;k++) {					
+					if (gRobot[i]->Parameters.UnitsRatio.Joints[k].MotorUnits != 0) {
+						gRobot[i]->Monitor.JointPosition[k] = (double) (gRobot[i]->Monitor.SetToDrive.Joints[k] - (double) gRobot[i]->Parameters.UnitsRatio.Joints[k].HomeOffset) * (double) gRobot[i]->Parameters.UnitsRatio.Joints[k].Direction * (double) gRobot[i]->Parameters.UnitsRatio.Joints[k].AxisUnits / (double) gRobot[i]->Parameters.UnitsRatio.Joints[k].MotorUnits;
+					} else {
+						gRobot[i]->Monitor.JointPosition[k] = 0;
+					}
+				}
+				for (k=0;k<AUX_MAX;k++) {					
+					if (gRobot[i]->Parameters.UnitsRatio.Aux[k].MotorUnits != 0) {
+						gRobot[i]->Monitor.AuxPosition[k] = (double) (gRobot[i]->Monitor.SetToDrive.Aux[k] - (double) gRobot[i]->Parameters.UnitsRatio.Aux[k].HomeOffset) * (double) gRobot[i]->Parameters.UnitsRatio.Aux[k].Direction * (double) gRobot[i]->Parameters.UnitsRatio.Aux[k].AxisUnits / (double) gRobot[i]->Parameters.UnitsRatio.Aux[k].MotorUnits;
+					} else {
+						gRobot[i]->Monitor.AuxPosition[k] = 0;
+					}
+				}
+				// remove mechanical coupling
+				if (gRobot[i]->Parameters.Mechanics.Coupling[5]!=0) gRobot[i]->Monitor.JointPosition[5] += (gRobot[i]->Monitor.JointPosition[4]*gRobot[i]->Parameters.Mechanics.Coupling[5]);
+				if (gRobot[i]->Parameters.Mechanics.Coupling[4]!=0) gRobot[i]->Monitor.JointPosition[5] += (gRobot[i]->Monitor.JointPosition[3]*gRobot[i]->Parameters.Mechanics.Coupling[4]);
+				if (gRobot[i]->Parameters.Mechanics.Coupling[3]!=0) gRobot[i]->Monitor.JointPosition[4] += (gRobot[i]->Monitor.JointPosition[3]*gRobot[i]->Parameters.Mechanics.Coupling[3]);
+				if (gRobot[i]->Parameters.Mechanics.Coupling[1]!=0) gRobot[i]->Monitor.JointPosition[2] += (gRobot[i]->Monitor.JointPosition[1]*gRobot[i]->Parameters.Mechanics.Coupling[1]);
+			}
+			
+			OldSimulation[i] = gRobot[i]->Parameters.Simulation;
+		
+		}	
 		
 		
         /* MaxTransitionAngle */
@@ -929,7 +961,7 @@ unsigned short RobotControl(unsigned long Robots, unsigned char RobotsNumber)
                                     if (((gRobot[i]->Monitor.JointPosition[k] > gRobot[i]->Parameters.JointLimits[k].PositionPos)||(gRobot[i]->Monitor.JointPosition[k] < gRobot[i]->Parameters.JointLimits[k].PositionNeg))&&(gRobot[i]->Parameters.JointLimits[k].PositionPos > gRobot[i]->Parameters.JointLimits[k].PositionNeg)) {
                                         WorkspaceFlag = k+1;
                                     }
-                                }							
+                                }
                             }
                             if ((Trf_Status != STATUS_OK)||(WorkspaceFlag)) {
                                 // ignore movement and reload old position
@@ -4851,6 +4883,17 @@ unsigned short RobotControl(unsigned long Robots, unsigned char RobotsNumber)
 				gRobot[i]->Monitor.ErrorLine = gRobot[i]->Monitor.LineNumber;
 			}			
 		}							
+		
+		/* warn for wrist singularity on 6ax robots */
+		if (gRobot[i]->Monitor.State == AUTO && gRobot[i]->Parameters.SingularityWarning && (gRobot[i]->Parameters.Mechanics.Type == ARM || gRobot[i]->Parameters.Mechanics.Type == UR)) {
+			if (gRobot[i]->Parameters.SingularityWarning == 1 || (gRobot[i]->Parameters.SingularityWarning == 2 && gRobot[i]->Parameters.Simulation)) {
+				if (fabs(gRobot[i]->Monitor.JointPosition[4]) < 5) {
+					gRobot[i]->Monitor.ActiveError = ERR_SINGULARITY;
+					gRobot[i]->Monitor.ErrorLine = gRobot[i]->Monitor.LineNumber;
+				}
+			}
+		}
+			
 
 		/* write set positions to drives */ 
 		
@@ -4894,26 +4937,25 @@ unsigned short RobotControl(unsigned long Robots, unsigned char RobotsNumber)
         if (gRobot[i]->Parameters.Mechanics.Coupling[4]!=0) PreSetToDriveJoints[5] -= (PreSetToDriveJoints[3]*gRobot[i]->Parameters.Mechanics.Coupling[4]);
         if (gRobot[i]->Parameters.Mechanics.Coupling[5]!=0) PreSetToDriveJoints[5] -= (PreSetToDriveJoints[4]*gRobot[i]->Parameters.Mechanics.Coupling[5]);
 		
-        /* scale units */
-        for (k=0;k<gRobot[i]->Monitor.AxesNum;k++) {
-            if (gRobot[i]->Parameters.UnitsRatio.Joints[k].AxisUnits != 0) {
-                gRobot[i]->Monitor.SetToDrive.Joints[k] = gRobot[i]->Parameters.UnitsRatio.Joints[k].HomeOffset + round(PreSetToDriveJoints[k] * (double) gRobot[i]->Parameters.UnitsRatio.Joints[k].Direction * (double) gRobot[i]->Parameters.UnitsRatio.Joints[k].MotorUnits / (double) gRobot[i]->Parameters.UnitsRatio.Joints[k].AxisUnits);
-            } else {
-                gRobot[i]->Monitor.SetToDrive.Joints[k] = 0;
-            }
-            //add License check (should be zero in normal cases)
-            gRobot[i]->Monitor.SetToDrive.Joints[k] += License;
-        }
-		for (k=0;k<AUX_MAX;k++) {
-			if (gRobot[i]->Parameters.UnitsRatio.Aux[k].AxisUnits != 0) {
-				gRobot[i]->Monitor.SetToDrive.Aux[k] = gRobot[i]->Parameters.UnitsRatio.Aux[k].HomeOffset + round(PreSetToDriveAux[k] * (double) gRobot[i]->Parameters.UnitsRatio.Aux[k].Direction * (double) gRobot[i]->Parameters.UnitsRatio.Aux[k].MotorUnits / (double) gRobot[i]->Parameters.UnitsRatio.Aux[k].AxisUnits);
+		//do not assign SetToDrive values in simulation mode
+		if (!gRobot[i]->Parameters.Simulation) {
+			/* scale units */
+			for (k=0;k<gRobot[i]->Monitor.AxesNum;k++) {
+				if (gRobot[i]->Parameters.UnitsRatio.Joints[k].AxisUnits != 0) {
+					gRobot[i]->Monitor.SetToDrive.Joints[k] = gRobot[i]->Parameters.UnitsRatio.Joints[k].HomeOffset + round(PreSetToDriveJoints[k] * (double) gRobot[i]->Parameters.UnitsRatio.Joints[k].Direction * (double) gRobot[i]->Parameters.UnitsRatio.Joints[k].MotorUnits / (double) gRobot[i]->Parameters.UnitsRatio.Joints[k].AxisUnits);
 				} else {
-				gRobot[i]->Monitor.SetToDrive.Aux[k] = 0;
+					gRobot[i]->Monitor.SetToDrive.Joints[k] = 0;
+				}
 			}
-			//add License check (should be zero in normal cases)
-			gRobot[i]->Monitor.SetToDrive.Aux[k] += License;
+			for (k=0;k<AUX_MAX;k++) {
+				if (gRobot[i]->Parameters.UnitsRatio.Aux[k].AxisUnits != 0) {
+					gRobot[i]->Monitor.SetToDrive.Aux[k] = gRobot[i]->Parameters.UnitsRatio.Aux[k].HomeOffset + round(PreSetToDriveAux[k] * (double) gRobot[i]->Parameters.UnitsRatio.Aux[k].Direction * (double) gRobot[i]->Parameters.UnitsRatio.Aux[k].MotorUnits / (double) gRobot[i]->Parameters.UnitsRatio.Aux[k].AxisUnits);
+				} else {
+					gRobot[i]->Monitor.SetToDrive.Aux[k] = 0;
+				}
+			}
 		}
-
+		
         //reset AxesMoved flag
         AxesMoved = 0;
 		
