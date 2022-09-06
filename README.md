@@ -24,3 +24,7 @@ A simple C library to control industrial robots.
 - Tangential axis
 - Auxiliary axes
 - Automatic tool and frame calibration
+
+
+## Documentation ##
+See [UserManual.pdf](https://github.com/ffrige/RobControl/blob/master/RobotControl%20-%20User%20Manual.pdf "UserManual") for details.
